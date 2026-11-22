@@ -1,16 +1,15 @@
 import json
 import re
+from functools import cache
 from pathlib import Path
 
 import pandas as pd
 
-DATA = Path(__file__).parent.parent / 'data'
+DATA = Path(__file__).parent / 'data' / 'fr.sputniknews.africa-2025' / 'data'
 CORPUS = {
-    'fr': DATA / 'fr.sputniknews.africa-2025' / 'data' / 'fr.sputniknews.africa-all.json',
-    'macron': DATA / 'fr.sputniknews.africa-2025' / 'data' / 'fr.sputniknews.africa-france-macron.json',
-    'poutine': DATA / 'fr.sputniknews.africa-2025' / 'data' / 'fr.sputniknews.africa-russie-poutine.json',
-    'fr2022': DATA / 'fr.sputniknews.africa--20220630--20230630' / 'fr.sputniknews.africa--20220630--20230630.json',
-    'en': DATA / 'data-2' / 'en.sputniknews.africa-2022-01-19-2025-10-13.json',
+    'fr': DATA / 'fr.sputniknews.africa-all.json',
+    'macron': DATA / 'fr.sputniknews.africa-france-macron.json',
+    'poutine': DATA / 'fr.sputniknews.africa-russie-poutine.json',
 }
 
 STOP = {
@@ -81,8 +80,9 @@ def person(name):
     return last if ok else None
 
 
-def articles(data):
-    rows = [a for y in data['data'].values() for m in y.values() for d in m.values() for a in d]
+@cache
+def articles(name='fr'):
+    rows = [a for y in load(name)['data'].values() for m in y.values() for d in m.values() for a in d]
     df = pd.DataFrame(rows)[['title', 'timestamp', 'date', 'kws', 'loc', 'org', 'per']]
     df['date'] = pd.to_datetime(df['date'])
     df['mois'] = df['date'].dt.strftime('%Y-%m')
