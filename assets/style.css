@@ -10,6 +10,11 @@
     --accent-soft: #e8f1fc;
     --border: rgba(11, 11, 11, 0.10);
     --radius: 12px;
+    --Dash-Fill-Interactive-Strong: var(--accent);
+    --Dash-Fill-Interactive-Weak: var(--accent-soft);
+    --Dash-Fill-Primary-Hover: var(--accent-soft);
+    --Dash-Stroke-Strong: var(--axis);
+    --Dash-Text-Weak: var(--muted);
     color-scheme: light;
 }
 
