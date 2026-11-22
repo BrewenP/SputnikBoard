@@ -15,11 +15,21 @@ Projet DATA732 : visualisation avec Plotly d'un corpus d'articles de presse en l
 
 ## Installation
 
-Placer les données dans `data/` (le dossier `fr.sputniknews.africa-2025/data/` est celui utilisé par le projet), puis :
+Placer les données qui sont données sur Moodle dans `data/` (le dossier `fr.sputniknews.africa-2025/data/` est celui utilisé par le projet) en vérifiant d'avoir bien tout dézippé.
+
+Vous donc êtes censé avoir 4 dossiers : 
+- `data-2`
+- `fr.sputniknews.africa-2025`
+- `fr.sputniknews.africa--20220630--20230630`
+- `fr.sputniknews.africa--20221101--20221231`
+
+Ensuite tout simplement :
 
 ```
 uv sync
 ```
+
+Et le projet est lancé
 
 ## Lancement
 
