@@ -162,6 +162,8 @@ body {
     background: transparent !important;
     color: var(--ink-2);
     padding: 10px 14px !important;
+    flex: 0 0 auto !important;
+    width: auto !important;
     font-weight: 500;
     border-bottom: 2px solid transparent !important;
 }
