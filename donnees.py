@@ -26,7 +26,15 @@ STOP = {
     'affaire', 'étranger', 'devenir', 'passer', 'mener', 'créer', 'prévoir', 'utiliser', 'appeler', 'lancer',
     'générer', 'ia', 'face', 'clé', 'local', 'spécial', 'renforcer', 'soutenir', 'service', 'site', 'centre',
 }
-NOT_PERSON = {'washington', 'victoire', 'burkinab', 'sputnik', 'sputnikradio', 'afrique', 'kremlin', 'moscou'}
+NOT_PERSON = {
+    'washington', 'victoire', 'burkinab', 'sputnik', 'sputnikradio', 'afrique', 'kremlin', 'moscou', 'kiev',
+    'guin', 'fran', 'faso', 'ivoire', 'premier', 'ministre', 'castbox', 'bloomberg', 'rosatom', 'sergue', 'gate',
+    'interrog', 'axio', 'jazeera', 'iskander',
+}
+ALIASES = {
+    'Traor': 'Traoré', 'Jinping': 'Xi Jinping', 'Leyen': 'von der Leyen', 'Gaulle': 'de Gaulle',
+    'Jong': 'Kim Jong-un', 'Itno': 'Déby', 'Silva': 'Lula', 'Medinski': 'Medinsky',
+}
 
 COUNTRIES = {
     'DZA': ('Algérie', 'Algeria'), 'AGO': ('Angola', 'Angola'), 'BEN': ('Bénin', 'Benin'),
@@ -78,8 +86,8 @@ def countries(entities, lang='fr'):
 
 def person(name):
     last = name.split()[-1] if name.split() else ''
-    ok = len(last) >= 5 and last.isalpha() and last[0].isupper() and last.lower() not in NOT_PERSON
-    return last if ok else None
+    ok = len(last) >= 4 and last.isalpha() and last.istitle() and last.lower() not in NOT_PERSON
+    return ALIASES.get(last, last) if ok else None
 
 
 @cache
