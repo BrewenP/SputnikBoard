@@ -23,6 +23,7 @@ axis = dict(
 
 pio.templates['pressboard'] = go.layout.Template(layout=dict(
     font=dict(family=FONT, color=INK, size=13),
+    separators=', ',
     paper_bgcolor=SURFACE, plot_bgcolor=SURFACE,
     colorway=SERIES,
     colorscale=dict(sequential=SEQUENTIAL, diverging=DIVERGING),

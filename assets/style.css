@@ -140,7 +140,13 @@ body {
 .kpi .value {
     font-size: 28px;
     font-weight: 700;
+    line-height: 1.15;
     letter-spacing: -0.02em;
+    margin-bottom: 4px;
+}
+
+.kpi .value.texte {
+    font-size: 22px;
 }
 
 .kpi .name {

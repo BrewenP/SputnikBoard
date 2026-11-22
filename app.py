@@ -1,5 +1,6 @@
 from collections import Counter
 
+import plotly.graph_objects as go
 from dash import Dash, Input, Output, ctx, dcc, html
 
 import theme
@@ -46,6 +47,10 @@ def nombre(n):
     return f'{n:,}'.replace(',', ' ')
 
 
+def pourcent(x):
+    return f'{x:.0%}'.replace('%', ' %')
+
+
 def libelle(mois, noms=COURTS):
     annee, m = mois.split('-')
     return f'{noms[int(m) - 1]} {annee if noms is LONGS else annee[2:]}'
@@ -57,10 +62,31 @@ def filtrer(periode):
 
 def kpi(valeur, nom, detail):
     return html.Div(className='card kpi', children=[
-        html.Div(valeur, className='value'),
+        html.Div(valeur, className='value' if valeur[0].isdigit() else 'value texte'),
         html.Div(nom, className='name'),
         html.Div(detail, className='detail'),
     ])
+
+
+def volume(periode):
+    n = df.groupby('mois').size()
+    x = [libelle(m) for m in n.index]
+    fig = go.Figure(go.Bar(
+        x=x, y=n.values,
+        marker_color=[theme.SERIES[0] if periode[0] <= m <= periode[1] else theme.GRID for m in n.index],
+        customdata=[libelle(m, LONGS) for m in n.index],
+        hovertemplate='%{customdata}<br><b>%{y}</b> articles<extra></extra>',
+    ))
+    fig.add_annotation(
+        x=libelle('2025-04'), y=n['2025-04'], text='Changement de collecte', showarrow=True, arrowhead=0,
+        ax=-16, ay=-24, xanchor='right', arrowcolor=theme.AXIS, font=dict(size=11, color=theme.INK_2),
+    )
+    fig.update_layout(
+        height=150, margin=dict(l=0, r=0, t=8, b=0),
+        xaxis=dict(tickmode='array', tickvals=x[::3], showline=False),
+        yaxis=dict(nticks=3, showline=False),
+    )
+    return fig
 
 
 def carte(titre, question, ticket, large):
@@ -124,14 +150,18 @@ def choisir_periode(valeur):
 def indicateurs(periode):
     sel = filtrer(periode)
     personnes = Counter(p for s in sel['personnes'] for p in s)
-    pays = Counter(p for s in sel['pays'] for p in s)
+    pays, n_pays = Counter(p for s in sel['pays'] for p in s & AFRICA).most_common(1)[0]
     afrique = sel['pays'].map(lambda s: bool(s & AFRICA)).mean()
     mois = sel['mois'].nunique()
     return [
         kpi(nombre(len(sel)), 'articles', f'{nombre(round(len(sel) / mois))} par mois en moyenne'),
         kpi(nombre(len(personnes)), 'personnes citées', f'la plus citée : {personnes.most_common(1)[0][0]}'),
-        kpi(nombre(len(pays)), 'pays reconnus', f'le plus cité : {NAME[pays.most_common(1)[0][0]]}'),
-        kpi(f'{afrique:.0%}'.replace('%', ' %'), "parlent d'un pays africain", 'au moins un pays africain cité'),
+        kpi(pourcent(afrique), "parlent d'un pays africain", 'au moins un pays africain cité'),
+        kpi(NAME[pays], 'pays africain le plus cité', f'dans {pourcent(n_pays / len(sel))} des articles'),
+        html.Div(className='card volume', children=[
+            html.Div('Articles par mois', className='name'),
+            dcc.Graph(figure=volume(periode), config={'displayModeBar': False}),
+        ]),
     ]
 
 
