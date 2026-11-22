@@ -123,7 +123,7 @@ app.layout = html.Div(className='page', children=[
     ]),
     dcc.Store(id='periode'),
     html.Div(id='indicateurs', className='overview'),
-    dcc.Tabs(id='onglet', value='evolution', className='tabs', children=[
+    dcc.Tabs(id='onglet', value='evolution', className='tabs', mobile_breakpoint=0, children=[
         dcc.Tab(label=label, value=key, className='tab', selected_className='tab--selected', children=[
             html.Div(className='grid', children=[carte(*c) for c in cartes]),
         ])

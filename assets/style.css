@@ -166,6 +166,8 @@ body {
     border-bottom: 1px solid var(--grid);
     margin-bottom: 20px;
     gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
 }
 
 .tab {
@@ -175,6 +177,7 @@ body {
     padding: 10px 14px !important;
     flex: 0 0 auto !important;
     width: auto !important;
+    white-space: nowrap;
     font-weight: 500;
     border-bottom: 2px solid transparent !important;
 }
@@ -232,5 +235,15 @@ body {
 
     .filters {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    .page {
+        padding: 20px 16px 32px;
+    }
+
+    .source {
+        text-align: left;
     }
 }
