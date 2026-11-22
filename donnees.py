@@ -91,10 +91,11 @@ def person(name):
 @cache
 def articles(name='fr'):
     rows = [a for y in load(name)['data'].values() for m in y.values() for d in m.values() for a in d]
-    df = pd.DataFrame(rows)[['title', 'timestamp', 'date', 'kws', 'loc', 'org', 'per']]
-    df['date'] = pd.to_datetime(df['date'])
+    raw = pd.DataFrame(rows)
+    df = pd.DataFrame({'titre': raw['title'], 'date': pd.to_datetime(raw['date'])})
     df['mois'] = df['date'].dt.strftime('%Y-%m')
-    df['kws'] = df['kws'].map(lambda k: {w: n for w, n in k.items() if w not in STOP and len(w) > 2})
-    df['per'] = df['per'].map(lambda p: {person(n) for n in p} - {None})
-    df['pays'] = df['loc'].map(countries)
-    return df
+    df['semaine'] = df['date'].dt.to_period('W').dt.start_time
+    df['mots'] = raw['kws'].map(lambda k: {w: n for w, n in k.items() if w not in STOP and len(w) > 2})
+    df['personnes'] = raw['per'].map(lambda p: {person(n) for n in p} - {None})
+    df['pays'] = raw['loc'].map(countries)
+    return df.sort_values('date', ignore_index=True)
