@@ -37,31 +37,31 @@ ALIASES = {
 }
 
 COUNTRIES = {
-    'DZA': ('Algérie', 'Algeria'), 'AGO': ('Angola', 'Angola'), 'BEN': ('Bénin', 'Benin'),
-    'BWA': ('Botswana', 'Botswana'), 'BFA': ('Burkina Faso|Burkina', 'Burkina Faso'), 'BDI': ('Burundi', 'Burundi'),
-    'CMR': ('Cameroun', 'Cameroon'), 'CAF': ('Centrafrique|République centrafricaine', 'Central African Republic|CAR'),
-    'TCD': ('Tchad', 'Chad'), 'COD': ('RDC|République démocratique du Congo', 'DRC|Democratic Republic of the Congo'),
-    'COG': ('Congo', 'Congo'), 'CIV': ("Côte d'Ivoire", "Ivory Coast|Côte d'Ivoire|Cote d'Ivoire"),
-    'DJI': ('Djibouti', 'Djibouti'), 'EGY': ('Égypte', 'Egypt'), 'ERI': ('Érythrée', 'Eritrea'),
-    'ETH': ('Éthiopie', 'Ethiopia'), 'GAB': ('Gabon', 'Gabon'), 'GMB': ('Gambie', 'Gambia'), 'GHA': ('Ghana', 'Ghana'),
-    'GIN': ('Guinée', 'Guinea'), 'GNB': ('Guinée-Bissau', 'Guinea-Bissau'), 'GNQ': ('Guinée équatoriale', 'Equatorial Guinea'),
-    'KEN': ('Kenya', 'Kenya'), 'LBR': ('Liberia', 'Liberia'), 'LBY': ('Libye', 'Libya'), 'MDG': ('Madagascar', 'Madagascar'),
-    'MWI': ('Malawi', 'Malawi'), 'MLI': ('Mali', 'Mali'), 'MAR': ('Maroc', 'Morocco'), 'MRT': ('Mauritanie', 'Mauritania'),
-    'MOZ': ('Mozambique', 'Mozambique'), 'NAM': ('Namibie', 'Namibia'), 'NER': ('Niger', 'Niger'),
-    'NGA': ('Nigeria', 'Nigeria'), 'UGA': ('Ouganda', 'Uganda'), 'RWA': ('Rwanda', 'Rwanda'),
-    'SEN': ('Sénégal', 'Senegal'), 'SLE': ('Sierra Leone', 'Sierra Leone'), 'SOM': ('Somalie', 'Somalia'),
-    'SDN': ('Soudan', 'Sudan'), 'SSD': ('Soudan du Sud', 'South Sudan'), 'ZAF': ('Afrique du Sud', 'South Africa'),
-    'TZA': ('Tanzanie', 'Tanzania'), 'TGO': ('Togo', 'Togo'), 'TUN': ('Tunisie', 'Tunisia'), 'ZMB': ('Zambie', 'Zambia'),
-    'ZWE': ('Zimbabwe', 'Zimbabwe'), 'RUS': ('Russie', 'Russia'), 'UKR': ('Ukraine', 'Ukraine'), 'FRA': ('France', 'France'),
-    'USA': ('États-Unis|Uni|US', 'US|United States|United State|USA'), 'CHN': ('Chine', 'China'), 'IRN': ('Iran', 'Iran'),
-    'ISR': ('Israël|Isra', 'Israel'), 'TUR': ('Turquie', 'Turkey'), 'IND': ('Inde', 'India'), 'DEU': ('Allemagne', 'Germany'),
-    'GBR': ('Royaume-Uni', 'United Kingdom|UK|Britain'), 'BRA': ('Brésil', 'Brazil'), 'SYR': ('Syrie', 'Syria'),
-    'SAU': ('Arabie saoudite', 'Saudi Arabia'), 'JPN': ('Japon', 'Japan'), 'POL': ('Pologne', 'Poland'),
-    'MDA': ('Moldavie', 'Moldova'), 'BLR': ('Biélorussie', 'Belarus'), 'ITA': ('Italie', 'Italy'), 'CUB': ('Cuba', 'Cuba'),
-    'VEN': ('Venezuela', 'Venezuela'), 'PRK': ('Corée du Nord', 'North Korea'),
+    'DZA': 'Algérie|Alger', 'AGO': 'Angola|Luanda', 'BEN': 'Bénin|Cotonou', 'BWA': 'Botswana',
+    'BFA': 'Burkina Faso|Burkina|Ouagadougou', 'BDI': 'Burundi', 'CMR': 'Cameroun|Yaoundé',
+    'CAF': 'Centrafrique|République centrafricaine|Bangui', 'TCD': "Tchad|N'Djamena",
+    'COD': 'RDC|République démocratique du Congo|Kinshasa', 'COG': 'Congo|Brazzaville',
+    'CIV': "Côte d'Ivoire|Abidjan", 'DJI': 'Djibouti', 'EGY': 'Égypte|Caire|Le Caire', 'ERI': 'Érythrée',
+    'ETH': 'Éthiopie|Addis Abeba', 'GAB': 'Gabon|Libreville', 'GMB': 'Gambie', 'GHA': 'Ghana|Accra',
+    'GIN': 'Guinée|Conakry', 'GNB': 'Guinée-Bissau', 'GNQ': 'Guinée équatoriale', 'KEN': 'Kenya|Nairobi',
+    'LBR': 'Liberia', 'LBY': 'Libye|Tripoli', 'MDG': 'Madagascar|Antananarivo', 'MWI': 'Malawi',
+    'MLI': 'Mali|Bamako', 'MAR': 'Maroc|Rabat', 'MRT': 'Mauritanie|Nouakchott', 'MOZ': 'Mozambique|Maputo',
+    'NAM': 'Namibie|Windhoek', 'NER': 'Niger|Niamey', 'NGA': 'Nigeria|Abuja|Lagos', 'UGA': 'Ouganda|Kampala',
+    'RWA': 'Rwanda|Kigali', 'SEN': 'Sénégal|Dakar', 'SLE': 'Sierra Leone', 'SOM': 'Somalie|Mogadiscio',
+    'SDN': 'Soudan|Khartoum', 'SSD': 'Soudan du Sud', 'ZAF': 'Afrique du Sud|Pretoria|Johannesburg|Le Cap',
+    'TZA': 'Tanzanie|Dodoma|Dar es Salaam', 'TGO': 'Togo|Lomé', 'TUN': 'Tunisie|Tunis', 'ZMB': 'Zambie|Lusaka',
+    'ZWE': 'Zimbabwe|Harare',
+    'RUS': 'Russie|Moscou|Kremlin|Saint-Pétersbourg', 'UKR': 'Ukraine|Kiev', 'FRA': 'France|Paris|Élysée',
+    'USA': 'États-Unis|Uni|US|USA|Washington|Maison Blanche', 'CHN': 'Chine|Pékin', 'IRN': 'Iran|Téhéran',
+    'ISR': 'Israël|Isra|Tel Aviv', 'PSE': 'Palestine|Gaza|Cisjordanie', 'TUR': 'Turquie|Ankara|Istanbul',
+    'IND': 'Inde|New Delhi', 'DEU': 'Allemagne|Berlin', 'GBR': 'Royaume-Uni|Londres', 'BRA': 'Brésil|Brasilia',
+    'SYR': 'Syrie|Damas', 'LBN': 'Liban|Beyrouth', 'IRQ': 'Irak|Bagdad', 'QAT': 'Qatar|Doha',
+    'SAU': 'Arabie saoudite|Riyad', 'PAK': 'Pakistan', 'JPN': 'Japon|Tokyo', 'POL': 'Pologne|Varsovie',
+    'MDA': 'Moldavie|Chisinau', 'BLR': 'Biélorussie|Minsk', 'ITA': 'Italie|Rome', 'CUB': 'Cuba',
+    'VEN': 'Venezuela|Caracas', 'PRK': 'Corée du Nord|Pyongyang',
 }
 AFRICA = set(list(COUNTRIES)[:list(COUNTRIES).index('RUS')])
-NAME = {iso: fr.split('|')[0] for iso, (fr, en) in COUNTRIES.items()}
+NAME = {iso: names.split('|')[0] for iso, names in COUNTRIES.items()}
 
 
 def norm(s):
@@ -69,10 +69,7 @@ def norm(s):
     return s[:-1] if s.endswith('s') else s
 
 
-ISO = {
-    lang: {norm(alias): iso for iso, names in COUNTRIES.items() for alias in names[i].split('|')}
-    for i, lang in enumerate(['fr', 'en'])
-}
+ISO = {norm(alias): iso for iso, names in COUNTRIES.items() for alias in names.split('|')}
 
 
 def load(name):
@@ -80,8 +77,9 @@ def load(name):
         return json.load(f)
 
 
-def countries(entities, lang='fr'):
-    return {ISO[lang][norm(e)] for e in entities if norm(e) in ISO[lang]}
+
+def countries(entities):
+    return {ISO[norm(e)] for e in entities if norm(e) in ISO}
 
 
 def person(name):
