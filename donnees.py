@@ -99,3 +99,8 @@ def articles(name='fr'):
     df['personnes'] = raw['per'].map(lambda p: {person(n) for n in p} - {None})
     df['pays'] = raw['loc'].map(countries)
     return df.sort_values('date', ignore_index=True)
+
+
+def proportion(df, colonne, termes, par='mois'):
+    presence = pd.DataFrame({t: df[colonne].map(lambda s: t in s) for t in termes})
+    return presence.groupby(df[par]).mean()
