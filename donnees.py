@@ -77,7 +77,6 @@ def load(name):
         return json.load(f)
 
 
-
 def countries(entities):
     return {ISO[norm(e)] for e in entities if norm(e) in ISO}
 
