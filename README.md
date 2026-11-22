@@ -1,4 +1,4 @@
-# PressBoard
+# SputnikBoard
 
 Projet DATA732 : visualisation avec Plotly d'un corpus d'articles de presse en ligne (Sputnik Afrique).
 
@@ -123,7 +123,7 @@ def evolution(periode):
 
 ### Règles de style
 
-- **Ne pas définir de couleurs, polices ou marges dans les graphiques.** Le thème `pressboard` de `theme.py` est appliqué automatiquement à toutes les figures dès que `theme` est importé.
+- **Ne pas définir de couleurs, polices ou marges dans les graphiques.** Le thème `sputnikboard` de `theme.py` est appliqué automatiquement à toutes les figures dès que `theme` est importé.
 - **Couleurs** : utiliser les constantes de `theme.py`.
   - `SERIES` pour des catégories, dans l'ordre et sans sauter de couleur. Une même entité garde toujours la même couleur, quel que soit le filtre.
   - `SEQUENTIAL` (bleu, du clair au foncé) pour une intensité, par exemple sur une carte.
