@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from dash import Dash, Input, Output, ctx, dcc, html
 
 import theme
-from donnees import AFRICA, NAME, articles, surrepresentation
+from donnees import AFRICA, COUNTRIES, NAME, articles, proportion, surrepresentation
 
 ISSUES = 'https://github.com/BrewenP/SputnikBoard/issues/'
 
@@ -143,7 +143,72 @@ def discours(periode, mode):
     return fig
 
 
+VUES = {'afrique': 'Afrique', 'monde': 'Monde'}
+
+
+def part(x):
+    return f'{x * 100:.1f}'.replace('.', ',') + ' %'
+
+
+def carte_pays(periode, vue):
+    sel = filtrer(periode)
+    codes = sorted(AFRICA if vue == 'afrique' else COUNTRIES)
+    parts = proportion(sel, 'pays', codes)
+    n_articles = sel.groupby('mois').size()
+    mois = list(parts.index)
+    zmax = max(float(parts.to_numpy().max()), 0.01)  # même échelle pour toutes les images
+
+    def trace(m):
+        z = parts.loc[m]
+        return go.Choropleth(
+            locations=codes, z=z.values, locationmode='ISO-3', zmin=0, zmax=zmax,
+            colorscale=theme.SEQUENTIAL, marker_line_width=0.5, marker_line_color=theme.AXIS,
+            colorbar=dict(title='Part des articles', tickformat='.0%', thickness=12, len=0.7, outlinewidth=0),
+            customdata=[(NAME[c], part(v), nombre(round(v * n_articles[m]))) for c, v in z.items()],
+            hovertemplate='<b>%{customdata[0]}</b><br>%{customdata[1]} des articles du mois '
+                          '(%{customdata[2]} articles)<extra></extra>',
+        )
+
+    cadre = dict(duration=700, redraw=True)
+    fig = go.Figure(
+        data=trace(mois[0]),
+        frames=[go.Frame(data=[trace(m)], name=m) for m in mois],
+    )
+    fig.update_geos(scope='africa' if vue == 'afrique' else 'world', projection_type='natural earth')
+    if vue == 'monde':  # cadrage explicite : sinon la carte garde le décalage de la vue Afrique
+        fig.update_geos(lonaxis_range=[-180, 180], lataxis_range=[-58, 85], projection_rotation_lon=0)
+    fig.update_layout(
+        height=560, margin=dict(l=0, r=0, t=8, b=0), dragmode=False, uirevision=vue,
+        updatemenus=[dict(
+            type='buttons', direction='left', x=0, y=0, xanchor='left', yanchor='top', pad=dict(t=30, l=4),
+            buttons=[
+                dict(label='▶ Lecture', method='animate',
+                     args=[None, dict(frame=cadre, transition=dict(duration=0), fromcurrent=True)]),
+                dict(label='❚❚ Pause', method='animate',
+                     args=[[None], dict(frame=dict(duration=0, redraw=False), mode='immediate',
+                                        transition=dict(duration=0))]),
+            ],
+        )],
+        sliders=[dict(
+            x=0.2, y=0, len=0.8, xanchor='left', yanchor='top', pad=dict(t=30, b=0),
+            currentvalue=dict(prefix='Mois : ', font=dict(size=13, color=theme.INK_2)),
+            font=dict(size=10, color=theme.MUTED),
+            steps=[dict(label=libelle(m), method='animate',
+                        args=[[m], dict(mode='immediate', frame=dict(duration=0, redraw=True),
+                                        transition=dict(duration=0))]) for m in mois],
+        )],
+    )
+    return fig
+
+
 CONTENUS = {
+    5: [
+        dcc.RadioItems(
+            id='carte-vue', value='afrique', inline=True, className='bascule',
+            options=[{'label': nom, 'value': vue} for vue, nom in VUES.items()],
+        ),
+        dcc.Graph(id='carte-graphique', config={'displayModeBar': False}),
+    ],
     9: [
         dcc.RadioItems(
             id='discours-mode', value='mots', inline=True, className='bascule',
@@ -244,6 +309,11 @@ def indicateurs(periode):
 @app.callback(Output('discours-graphique', 'figure'), Input('periode', 'data'), Input('discours-mode', 'value'))
 def comparer_discours(periode, mode):
     return discours(periode, mode)
+
+
+@app.callback(Output('carte-graphique', 'figure'), Input('periode', 'data'), Input('carte-vue', 'value'))
+def cartographier(periode, vue):
+    return carte_pays(periode, vue)
 
 
 if __name__ == '__main__':
