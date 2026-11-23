@@ -372,6 +372,7 @@ def evolution_themes(periode):
             hovertemplate=f'{nom_theme(t)} : <b>%{{y:.0%}}</b><extra></extra>',
         ))
     fig.update_layout(height=420, legend=dict(orientation='v', x=1.02, y=1, yanchor='top', traceorder='reversed', itemsizing='constant'),
+                      xaxis=dict(tickmode='array', tickvals=x[::3], tickangle=0),
                       yaxis=dict(tickformat='.0%', range=[0, 1]), hovermode='x unified')
     return fig
 
