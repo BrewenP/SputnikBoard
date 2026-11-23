@@ -1,5 +1,7 @@
 import json
+import math
 import re
+from collections import Counter
 from functools import cache
 from pathlib import Path
 
@@ -103,3 +105,36 @@ def articles(name='fr'):
 def proportion(df, colonne, termes, par='mois'):
     presence = pd.DataFrame({t: df[colonne].map(lambda s: t in s) for t in termes})
     return presence.groupby(df[par]).mean()
+
+
+def compter(serie):
+    """Fréquence de chaque terme d'une colonne : occurrences pour `mots`, nombre d'articles pour `personnes`."""
+    total = Counter()
+    for termes in serie:
+        total.update(termes if isinstance(termes, dict) else dict.fromkeys(termes, 1))
+    return total
+
+
+def surrepresentation(a, b, colonne, minimum=20, lissage=0.5):
+    """Surreprésentation relative de chaque terme de `a` par rapport à `b` (logarithme du rapport de cotes).
+
+    Pour un terme, la cote dans un corpus est sa fréquence divisée par la fréquence de tous les autres termes.
+    Le score est le logarithme népérien du rapport des cotes : positif si le terme est plus caractéristique
+    de `a`, négatif s'il l'est de `b`, proche de 0 s'il est utilisé de la même façon des deux côtés.
+    Le lissage (`lissage` ajouté à chaque fréquence) évite de diviser par zéro quand un terme est absent d'un corpus.
+    Les termes dont la fréquence cumulée est inférieure à `minimum` sont écartés.
+
+    Renvoie un tableau trié par score décroissant, avec les colonnes `terme`, `freq_a`, `freq_b` et `score`.
+    """
+    ca, cb = compter(a[colonne]), compter(b[colonne])
+    ta, tb = sum(ca.values()), sum(cb.values())
+    lignes = []
+    for terme in ca.keys() | cb.keys():
+        fa, fb = ca[terme], cb[terme]
+        if fa + fb < minimum:
+            continue
+        cote_a = (fa + lissage) / (ta - fa + lissage)
+        cote_b = (fb + lissage) / (tb - fb + lissage)
+        lignes.append((terme, fa, fb, math.log(cote_a / cote_b)))
+    return pd.DataFrame(lignes, columns=['terme', 'freq_a', 'freq_b', 'score']).sort_values(
+        ['score', 'terme'], ascending=[False, True], ignore_index=True)

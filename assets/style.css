@@ -484,3 +484,41 @@ body {
         font-size: 22px;
     }
 }
+
+.bascule {
+    display: inline-flex;
+    gap: 4px;
+    margin: 0 0 8px;
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--page);
+}
+
+.bascule label {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 14px;
+    border-radius: 999px;
+    color: var(--ink-2);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+}
+
+.bascule label:has(input:checked),
+.bascule label:has(input:checked) span {
+    background: var(--nuit);
+    color: var(--clair);
+}
+
+.bascule input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.bascule label:has(input:focus-visible) {
+    outline: 2px solid var(--signal);
+    outline-offset: 2px;
+}
