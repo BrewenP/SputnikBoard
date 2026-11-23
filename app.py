@@ -313,6 +313,18 @@ AFC_FREQUENTS = 200  # mots clés les plus fréquents de la période, gardés po
 AFC_AFFICHES = 30  # mots qui contribuent le plus aux deux axes, affichés sur le graphique
 
 
+def sans_chevauchement(points, ecart=(0.08, 0.05)):
+    xs, ys = [x for x, _ in points], [y for _, y in points]
+    lx, ly = (max(xs) - min(xs)) or 1, (max(ys) - min(ys)) or 1
+    places, visibles = [], []
+    for x, y in points:
+        libre = all(abs(x - a) / lx > ecart[0] or abs(y - b) / ly > ecart[1] for a, b in places)
+        visibles.append(libre)
+        if libre:
+            places.append((x, y))
+    return visibles
+
+
 @app.callback(Output('afc-graphique', 'figure'), Input('periode', 'data'))
 def afc(periode):
     sel = filtrer(periode)
@@ -339,9 +351,13 @@ def afc(periode):
     # Mots les plus variables dans le temps : ceux qui contribuent le plus à la construction des deux axes.
     contribution = ca.row_contributions_[0] * inertie[0] + ca.row_contributions_[1] * inertie[1]
     mots = mots.loc[contribution.nlargest(AFC_AFFICHES).index]
-    # Les mots trop proches du centre se chevauchent : ils gardent leur point, avec le nom au survol seulement.
-    distance = (mots[0] ** 2 + mots[1] ** 2) ** 0.5
-    etiquettes = [m if d >= distance.quantile(0.35) else '' for m, d in zip(mots.index, distance)]
+
+    extremes = [mois.index[0], mois.index[-1]]
+    ordre_mois = extremes + list((mois[0] ** 2 + mois[1] ** 2).drop(extremes).sort_values(ascending=False).index)
+    points = [(mois.loc[m, 0], mois.loc[m, 1]) for m in ordre_mois] + list(zip(mots[0], mots[1]))
+    visibles = sans_chevauchement(points)
+    mois_visibles = {m for m, v in zip(ordre_mois, visibles) if v}
+    etiquettes = [m if v else '' for m, v in zip(mots.index, visibles[len(ordre_mois):])]
 
     fig.add_trace(go.Scatter(
         x=mots[0], y=mots[1], mode='markers+text', name='Mots clés', text=etiquettes, textposition='top center',
@@ -350,10 +366,12 @@ def afc(periode):
         hovertemplate='<b>%{customdata[0]}</b><br>dans %{customdata[1]} articles<extra></extra>',
     ))
     fig.add_trace(go.Scatter(
-        x=mois[0], y=mois[1], mode='lines+markers+text', name='Mois (dans l’ordre)',
-        text=[libelle(m) for m in mois.index], textposition='bottom center',
-        line=dict(color=theme.SERIES[0], width=1.5), marker=dict(color=theme.SERIES[0], size=8),
-        textfont=dict(color=theme.SERIES[0], size=11), customdata=[libelle(m, LONGS) for m in mois.index],
+        x=mois[0], y=mois[1], mode='lines+markers+text', name='Mois (du plus clair au plus foncé)',
+        text=[libelle(m) if m in mois_visibles else '' for m in mois.index], textposition='top center',
+        line=dict(color=theme.AXIS, width=1),
+        marker=dict(color=list(range(len(mois))), colorscale=theme.SEQUENTIAL[1:], size=10,
+                    line=dict(color=theme.SURFACE, width=1.5)),
+        textfont=dict(color=theme.SEQUENTIAL[-2], size=11), customdata=[libelle(m, LONGS) for m in mois.index],
         hovertemplate='<b>%{customdata}</b><extra></extra>',
     ))
     fig.update_layout(
