@@ -1,10 +1,11 @@
+import math
 from collections import Counter
 
 import plotly.graph_objects as go
 from dash import Dash, Input, Output, ctx, dcc, html
 
 import theme
-from donnees import AFRICA, NAME, articles
+from donnees import AFRICA, NAME, articles, surrepresentation
 
 ISSUES = 'https://github.com/BrewenP/SputnikBoard/issues/'
 
@@ -32,6 +33,7 @@ ONGLETS = {
 }
 
 df = articles('fr')
+macron, poutine = articles('macron'), articles('poutine')
 MOIS = sorted(df['mois'].unique())
 COURTS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
 LONGS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre',
@@ -89,14 +91,77 @@ def volume(periode):
     return fig
 
 
+# mode -> (libellé du bouton, colonne de `articles`, fréquence cumulée minimale, unité des fréquences)
+MODES = {
+    'mots': ('Mots clés', 'mots', 20, 'occurrences'),
+    'personnes': ('Personnes', 'personnes', 8, 'articles'),
+}
+FRANCE = ('France / Macron', theme.DIVERGING[1])
+RUSSIE = ('Russie / Poutine', theme.DIVERGING[5])
+TOP = 15
+
+
+def decimal(x, signe=False):
+    return f'{x:+.2f}'.replace('.', ',') if signe else f'{x:.2f}'.replace('.', ',')
+
+
+def discours(periode, mode):
+    _, colonne, minimum, unite = MODES[mode]
+    fr, ru = (d[d['mois'].between(*periode)] for d in (macron, poutine))
+    s = surrepresentation(ru, fr, colonne, minimum)  # score > 0 : côté Russie, score < 0 : côté France
+    cotes = {
+        FRANCE: s[s['score'] < 0].tail(TOP).iloc[::-1],
+        RUSSIE: s[s['score'] > 0].head(TOP),
+    }
+    fig = go.Figure()
+    for (nom, couleur), d in cotes.items():
+        fig.add_bar(
+            x=d['score'], y=list(range(len(d))), orientation='h', name=nom, marker_color=couleur,
+            text=d['terme'], textposition='outside', cliponaxis=False,
+            customdata=[(t, decimal(abs(sc)), f'{math.exp(abs(sc)):.1f}'.replace('.', ','), nombre(a), nombre(b))
+                        for t, sc, a, b in zip(d['terme'], d['score'], d['freq_b'], d['freq_a'])],
+            hovertemplate=(
+                '<b>%{customdata[0]}</b><br>'
+                'Score : %{customdata[1]} (cote ×%{customdata[2]} par rapport à l\'autre corpus)<br>'
+                f'{FRANCE[0]} : %{{customdata[3]}} {unite}<br>'
+                f'{RUSSIE[0]} : %{{customdata[4]}} {unite}<extra></extra>'
+            ),
+        )
+    if s.empty:
+        fig.add_annotation(text='Pas assez de données sur cette période', showarrow=False, font=dict(color=theme.MUTED))
+    bord = max(s['score'].abs().max() if not s.empty else 1, 1)
+    graduations = list(range(-math.ceil(bord), math.ceil(bord) + 1))
+    fig.add_vline(x=0, line_color=theme.AXIS)
+    fig.update_layout(
+        barmode='overlay', height=max(TOP, *(len(d) for d in cotes.values())) * 30 + 130,
+        xaxis=dict(
+            range=[-bord * 1.35, bord * 1.35], tickvals=graduations, ticktext=[str(abs(g)) for g in graduations],
+            showgrid=True, title='Score de surreprésentation (logarithme du rapport de cotes)',
+        ),
+        yaxis=dict(autorange='reversed', showticklabels=False, showgrid=False, showline=False),
+    )
+    return fig
+
+
+CONTENUS = {
+    9: [
+        dcc.RadioItems(
+            id='discours-mode', value='mots', inline=True, className='bascule',
+            options=[{'label': libelle_, 'value': mode} for mode, (libelle_, *_) in MODES.items()],
+        ),
+        dcc.Graph(id='discours-graphique', config={'displayModeBar': False}),
+    ],
+}
+
+
 def carte(titre, question, ticket, large):
     return html.Div(className='panel wide' if large else 'panel', children=[
         html.H2(titre),
         html.P(question, className='question'),
-        html.Div(className='placeholder', children=[
+        *CONTENUS.get(ticket, [html.Div(className='placeholder', children=[
             html.Span('Graphique à venir'),
             html.A(f'Ticket #{ticket}', href=f'{ISSUES}{ticket}', target='_blank'),
-        ]),
+        ])]),
     ])
 
 
@@ -174,6 +239,11 @@ def indicateurs(periode):
             dcc.Graph(figure=volume(periode), config={'displayModeBar': False}),
         ]),
     ]
+
+
+@app.callback(Output('discours-graphique', 'figure'), Input('periode', 'data'), Input('discours-mode', 'value'))
+def comparer_discours(periode, mode):
+    return discours(periode, mode)
 
 
 if __name__ == '__main__':
