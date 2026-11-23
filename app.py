@@ -342,35 +342,52 @@ def part(x):
     return f'{x * 100:.1f}'.replace('.', ',') + ' %'
 
 
+AES = {'MLI', 'BFA', 'NER'}  # Alliance des États du Sahel
+TOUTE_PERIODE = 'periode'
+
+
 def carte_pays(periode, vue):
     sel = filtrer(periode)
     codes = sorted(AFRICA if vue == 'afrique' else COUNTRIES)
-    parts = proportion(sel, 'pays', codes)
-    n_articles = sel.groupby('mois').size()
-    mois = list(parts.index)
-    zmax = max(float(parts.to_numpy().max()), 0.01)  # même échelle pour toutes les images
+    presence = pd.DataFrame({c: sel['pays'].map(lambda s: c in s) for c in codes})
+    parts = presence.groupby(sel['mois']).mean()
+    parts.loc[TOUTE_PERIODE] = presence.mean()
+    effectifs = sel.groupby('mois').size()
+    effectifs[TOUTE_PERIODE] = len(sel)
+    images = [TOUTE_PERIODE, *sel['mois'].drop_duplicates().sort_values()]
+    contour = dict(color=[theme.INK if c in AES else theme.AXIS for c in codes],
+                   width=[1.6 if c in AES else 0.5 for c in codes])
 
     def trace(m):
         z = parts.loc[m]
+        quand = 'de la période' if m == TOUTE_PERIODE else 'du mois'
         return go.Choropleth(
-            locations=codes, z=z.values, locationmode='ISO-3', zmin=0, zmax=zmax,
-            colorscale=theme.SEQUENTIAL, marker_line_width=0.5, marker_line_color=theme.AXIS,
+            # Échelle propre à chaque image : un mois très concentré n'écrase plus les autres.
+            locations=codes, z=z.values, locationmode='ISO-3', zmin=0, zmax=max(float(z.max()), 0.01),
+            colorscale=theme.SEQUENTIAL_SIGNAL, marker_line=contour,
             colorbar=dict(title='Part des articles', tickformat='.0%', thickness=12, len=0.7, outlinewidth=0),
-            customdata=[(NAME[c], part(v), nombre(round(v * n_articles[m]))) for c, v in z.items()],
-            hovertemplate='<b>%{customdata[0]}</b><br>%{customdata[1]} des articles du mois '
+            customdata=[(NAME[c], part(v), nombre(round(v * effectifs[m]))) for c, v in z.items()],
+            hovertemplate=f'<b>%{{customdata[0]}}</b><br>%{{customdata[1]}} des articles {quand} '
                           '(%{customdata[2]} articles)<extra></extra>',
         )
 
+    def nom_image(m):
+        return 'Toute la période' if m == TOUTE_PERIODE else libelle(m, LONGS)
+
     cadre = dict(duration=700, redraw=True)
     fig = go.Figure(
-        data=trace(mois[0]),
-        frames=[go.Frame(data=[trace(m)], name=m) for m in mois],
+        data=trace(TOUTE_PERIODE),
+        frames=[go.Frame(data=[trace(m)], name=m) for m in images],
     )
     fig.update_geos(scope='africa' if vue == 'afrique' else 'world', projection_type='natural earth')
     if vue == 'monde':  # cadrage explicite : sinon la carte garde le décalage de la vue Afrique
         fig.update_geos(lonaxis_range=[-180, 180], lataxis_range=[-58, 85], projection_rotation_lon=0)
     fig.update_layout(
-        height=560, margin=dict(l=0, r=0, t=8, b=0), dragmode=False, uirevision=vue,
+        height=580, margin=dict(l=0, r=0, t=8, b=0), dragmode=False, uirevision=vue,
+        annotations=[dict(
+            text='Contour noir : Mali, Burkina Faso et Niger, membres de l\'Alliance des États du Sahel (AES)',
+            xref='paper', yref='paper', x=0, y=1, xanchor='left', yanchor='top', showarrow=False,
+            font=dict(size=12, color=theme.INK_2))],
         updatemenus=[dict(
             type='buttons', direction='left', x=0, y=0, xanchor='left', yanchor='top', pad=dict(t=30, l=4),
             buttons=[
@@ -383,11 +400,11 @@ def carte_pays(periode, vue):
         )],
         sliders=[dict(
             x=0.2, y=0, len=0.8, xanchor='left', yanchor='top', pad=dict(t=30, b=0),
-            currentvalue=dict(prefix='Mois : ', font=dict(size=13, color=theme.INK_2)),
+            currentvalue=dict(prefix='Vue : ', font=dict(size=13, color=theme.INK_2)),
             font=dict(size=10, color=theme.MUTED),
-            steps=[dict(label=libelle(m), method='animate',
+            steps=[dict(label='Période' if m == TOUTE_PERIODE else libelle(m), value=nom_image(m), method='animate',
                         args=[[m], dict(mode='immediate', frame=dict(duration=0, redraw=True),
-                                        transition=dict(duration=0))]) for m in mois],
+                                        transition=dict(duration=0))]) for m in images],
         )],
     )
     return fig

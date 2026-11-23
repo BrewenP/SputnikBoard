@@ -14,6 +14,7 @@ ACCENT = '#ff6a13'
 
 SERIES = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948']
 SEQUENTIAL = ['#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5', '#256abf', '#184f95', '#0d366b']
+SEQUENTIAL_SIGNAL = ['#f1f0ed', '#ffe0cc', '#ffbf94', '#ff9a5c', '#ff6a13', '#d4520a', '#9c3a05']
 DIVERGING = ['#184f95', '#3987e5', '#9ec5f4', '#f0efec', '#f2a7a6', '#e34948', '#a82b2b']
 DIVERGING_SIGNAL = [
     [0, '#184f95'], [0.12, '#3987e5'], [0.3, '#9ec5f4'], [0.5, '#ecebe7'],
