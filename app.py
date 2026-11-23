@@ -326,8 +326,12 @@ def nom_theme(t):
 
 
 def note_themes():
-    return (f"{THEMES['k']} thèmes, nombre choisi par le meilleur score de silhouette entre "
-            f"{min(THEMES['silhouettes'])} et {max(THEMES['silhouettes'])}")
+    s, k = THEMES['silhouettes'], THEMES['k']
+    if k == max(s):
+        raison = f'la silhouette croît avec le nombre de thèmes, plafonné à {k} pour garder des couleurs distinctes'
+    else:
+        raison = f'meilleure silhouette entre {min(s)} et {max(s)} thèmes'
+    return f"{k} thèmes : {raison} (silhouette {s[k]:.2f})".replace('.', ',')
 
 
 @app.callback(Output('themes-carte', 'figure'), Input('periode', 'data'))

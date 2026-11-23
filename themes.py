@@ -2,7 +2,10 @@
 
 Les articles sont décrits par leurs mots clés pondérés en TF-IDF, réduits à 100 dimensions (SVD),
 regroupés par k-means puis projetés en deux dimensions avec t-SNE pour la carte.
-Le calcul prend environ une minute : il est fait une seule fois puis enregistré dans data/cache/.
+Le nombre de thèmes est celui qui maximise le score de silhouette entre 4 et 8. Sur ce corpus la silhouette
+reste faible et croît avec k (0,07 à 16 thèmes, 0,09 à 30) : il n'y a pas de nombre naturel de thèmes,
+8 est donc un plafond choisi pour la lisibilité, une couleur distincte par thème.
+Le calcul prend moins d'une minute : il est fait une seule fois puis enregistré dans data/cache/.
 """
 import pickle
 from pathlib import Path
