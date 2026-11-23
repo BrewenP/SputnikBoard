@@ -34,10 +34,9 @@ ONGLETS = {
     ]),
 }
 
-df = articles('fr')
-macron, poutine = articles('macron'), articles('poutine')
 THEMES = themes('fr')
-df['theme'] = THEMES['theme']
+df = articles('fr').assign(theme=THEMES['theme'])
+macron, poutine = articles('macron'), articles('poutine')
 MOIS = sorted(df['mois'].unique())
 COURTS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
 LONGS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre',

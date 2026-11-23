@@ -5,6 +5,7 @@ regroupés par k-means puis projetés en deux dimensions avec t-SNE pour la cart
 Le calcul prend environ une minute : il est fait une seule fois puis enregistré dans data/cache/.
 """
 import pickle
+from pathlib import Path
 
 import numpy as np
 from sklearn.cluster import KMeans
@@ -23,6 +24,7 @@ DIMENSIONS = 100
 GRAINE = 0
 CACHE = DATA.parent.parent / 'cache'  # data/cache/, non versionné comme tout data/
 VERSION = 2  # à augmenter si on change le calcul, pour forcer un nouveau cache
+SOURCES = [Path(__file__).with_name('donnees.py'), Path(__file__)]  # le cache est refait si le nettoyage change
 
 
 def calculer(df):
@@ -62,7 +64,7 @@ def themes(nom='fr'):
     et pour chaque article (même ordre que articles(nom)) son `theme` et ses coordonnées `x`, `y`."""
     df = articles(nom)
     cache = CACHE / f'themes-{nom}.pkl'
-    if cache.exists() and cache.stat().st_mtime > CORPUS[nom].stat().st_mtime:
+    if cache.exists() and cache.stat().st_mtime > max(f.stat().st_mtime for f in [CORPUS[nom], *SOURCES]):
         with open(cache, 'rb') as f:
             res = pickle.load(f)
         if res.get('version') == VERSION and res['n'] == len(df):
