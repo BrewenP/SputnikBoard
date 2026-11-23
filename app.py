@@ -97,121 +97,88 @@ def volume(periode):
     return fig
 
 
+RESEAU_PERSONNES = 35  # personnes les plus citées de la période
+RESEAU_LIENS = 75  # nombre maximal de liens affichés
+
+
 def reseau_personnes(periode):
     sel = filtrer(periode)
-    articles_personnes = Counter(p for personnes in sel['personnes'] for p in personnes)
-    principaux = [nom for nom, _ in articles_personnes.most_common(35)]
-    principaux_set = set(principaux)
-
+    citations = Counter(p for personnes in sel['personnes'] for p in personnes)
+    principaux = {nom for nom, _ in citations.most_common(RESEAU_PERSONNES)}
     cooccurrences = Counter()
     for personnes in sel['personnes']:
-        presentes = sorted(principaux_set & personnes)
-        cooccurrences.update(combinations(presentes, 2))
+        cooccurrences.update(combinations(sorted(principaux & personnes), 2))
 
-    liens = []
-    seuil = 1
-    for seuil_candidat in (2, 3, 4, 5, 6, 8):
-        candidats = [(a, b, poids) for (a, b), poids in cooccurrences.items() if poids >= seuil_candidat]
-        if len(candidats) <= 75:
-            seuil = seuil_candidat
-            liens = candidats
-            break
-    if not liens:
-        seuil = 1
-        liens = [(a, b, poids) for (a, b), poids in cooccurrences.items() if poids >= seuil]
-
+    # Plus petit seuil (au moins 2 articles en commun) qui garde au plus RESEAU_LIENS liens.
+    seuil = next((s for s in range(2, max(cooccurrences.values(), default=1) + 1)
+                  if sum(n >= s for n in cooccurrences.values()) <= RESEAU_LIENS), 1)
     graphe = nx.Graph()
-    graphe.add_nodes_from(principaux)
-    graphe.add_weighted_edges_from(liens)
-
-    couleurs = [
-        '#2a78d6', '#ff6a13', '#36a269', '#9854cc', '#d94f70',
-        '#8a6b4f', '#168c92', '#d1a21f', '#627ac0', '#c45b2d',
-    ]
-    communautes = list(nx.community.greedy_modularity_communities(graphe, weight='weight', resolution=1))
-    couleur_par_personne = {}
-    for numero, groupe in enumerate(communautes):
-        for personne in groupe:
-            couleur_par_personne[personne] = couleurs[numero % len(couleurs)]
-
-    position = nx.spring_layout(graphe, k=0.58, iterations=80, seed=42, weight='weight')
-    max_articles = max((articles_personnes[nom] for nom in principaux), default=1)
-    min_articles = min((articles_personnes[nom] for nom in principaux), default=1)
-    max_poids = max((poids for _, _, poids in liens), default=1)
+    graphe.add_weighted_edges_from((a, b, n) for (a, b), n in cooccurrences.items() if n >= seuil)
 
     fig = go.Figure()
-    for a, b, poids in liens:
-        x0, y0 = position[a]
-        x1, y1 = position[b]
-        intensite = poids / max_poids
+    fig.update_layout(height=640, xaxis=dict(visible=False), yaxis=dict(visible=False), hovermode='closest')
+    if graphe.number_of_edges() == 0:
+        fig.add_annotation(text='Pas assez de personnes citées ensemble sur cette période', showarrow=False,
+                           font=dict(color=theme.MUTED))
+        return fig
+
+    position = placer(graphe)
+    poids_max = max(n for _, _, n in graphe.edges(data='weight'))
+    for a, b, n in sorted(graphe.edges(data='weight'), key=lambda e: e[2]):
+        force = n / poids_max
         fig.add_trace(go.Scatter(
-            x=[x0, x1, None],
-            y=[y0, y1, None],
-            mode='lines',
-            line=dict(width=0.6 + 3.4 * intensite, color=f'rgba(128,132,140,{0.25 + 0.55 * intensite:.2f})'),
-            hoverinfo='skip',
-            showlegend=False,
+            x=[position[a][0], position[b][0]], y=[position[a][1], position[b][1]], mode='lines',
+            line=dict(width=0.8 + 5 * force, color=f'rgba(80, 82, 87, {0.12 + 0.5 * force:.2f})'),
+            hoverinfo='skip', showlegend=False,
         ))
 
-    tailles = []
-    for nom in principaux:
-        if max_articles == min_articles:
-            tailles.append(20)
-        else:
-            ratio = (articles_personnes[nom] - min_articles) / (max_articles - min_articles)
-            tailles.append(12 + 24 * ratio)
+    # Communautés par modularité, de la plus grande à la plus petite, nommées d'après leur personne la plus citée.
+    communautes = sorted(nx.community.greedy_modularity_communities(graphe, weight='weight', resolution=1.5),
+                         key=lambda c: (-len(c), min(c)))
+    citations_max = max(citations[nom] for nom in graphe)
+    autres = []
+    for i, groupe in enumerate(communautes):
+        if len(groupe) < 2 or i >= len(theme.SERIES):
+            autres += groupe
+            continue
+        ajouter_noeuds(fig, graphe, position, citations, citations_max, sorted(groupe),
+                       f'Autour de {max(groupe, key=citations.get)}', theme.SERIES[i])
+    if autres:
+        ajouter_noeuds(fig, graphe, position, citations, citations_max, sorted(autres), 'Autres', theme.AXIS)
 
-    textes = []
-    survol = []
-    for nom in principaux:
-        voisins = sorted(
-            ((graphe[nom][voisin].get('weight', 0), voisin) for voisin in graphe.neighbors(nom)),
-            reverse=True,
-        )
-        voisins_texte = '<br>'.join(f'{voisin} ({poids})' for poids, voisin in voisins[:5])
-        textes.append(nom)
-        survol.append(
-            f'<b>{nom}</b><br>{nombre(articles_personnes[nom])} articles'
-            + (f'<br><br>Principaux voisins :<br>{voisins_texte}' if voisins_texte else '')
-        )
-
-    fig.add_trace(go.Scatter(
-        x=[position[nom][0] for nom in principaux],
-        y=[position[nom][1] for nom in principaux],
-        mode='markers+text',
-        text=textes,
-        textposition='top center',
-        textfont=dict(size=11, color=theme.INK),
-        marker=dict(
-            size=tailles,
-            color=[couleur_par_personne[nom] for nom in principaux],
-            line=dict(width=1, color='rgba(255,255,255,0.9)'),
-        ),
-        customdata=survol,
-        hovertemplate='%{customdata}<extra></extra>',
-    ))
-
-    fig.update_layout(
-        height=620,
-        margin=dict(l=12, r=12, t=12, b=12),
-        hovermode='closest',
-        dragmode='pan',
-        showlegend=False,
-        xaxis=dict(visible=False),
-        yaxis=dict(visible=False),
-        annotations=[dict(
-            text=f'Seuil de co-occurrence : {seuil} article{"s" if seuil > 1 else ""}',
-            x=0,
-            y=1,
-            xref='paper',
-            yref='paper',
-            xanchor='left',
-            yanchor='bottom',
-            showarrow=False,
-            font=dict(size=12, color=theme.MUTED),
-        )],
-    )
+    masques = len(principaux) - graphe.number_of_nodes()
+    note = f'Liens : au moins {seuil} article{"s" if seuil > 1 else ""} en commun'
+    if masques:
+        note += f'. {masques} des {len(principaux)} personnes les plus citées, sans lien à ce seuil, ne sont pas affichées'
+    fig.add_annotation(text=note, xref='paper', yref='paper', x=0, y=0, showarrow=False, xanchor='left',
+                       yanchor='top', yshift=-4, font=dict(size=11, color=theme.MUTED))
+    fig.update_layout(margin=dict(l=8, r=8, t=48, b=28), legend=dict(itemsizing='constant'))
     return fig
+
+
+def placer(graphe):
+    # Le plus grand groupe connecté occupe le centre, les petits groupes isolés sont rangés sur la droite.
+    composantes = sorted(nx.connected_components(graphe), key=lambda c: (-len(c), min(c)))
+    position = nx.kamada_kawai_layout(graphe.subgraph(composantes[0]), weight=None)
+    for i, c in enumerate(composantes[1:]):
+        centre = (1.35 + 0.4 * (i // 6), 0.85 - 0.34 * (i % 6))
+        position.update(nx.spring_layout(graphe.subgraph(c), seed=0, scale=0.12, center=centre))
+    return position
+
+
+def ajouter_noeuds(fig, graphe, position, citations, citations_max, noms, nom_groupe, couleur):
+    survols = []
+    for nom in noms:
+        voisins = sorted(graphe[nom].items(), key=lambda v: -v[1]['weight'])[:5]
+        survols.append(f'<b>{nom}</b><br>{nombre(citations[nom])} articles<br><br>Le plus souvent avec :<br>'
+                       + '<br>'.join(f'{v} ({nombre(d["weight"])} articles)' for v, d in voisins))
+    fig.add_trace(go.Scatter(
+        x=[position[n][0] for n in noms], y=[position[n][1] for n in noms], mode='markers+text', name=nom_groupe,
+        text=noms, textposition='top center', textfont=dict(size=12, color=theme.INK),
+        marker=dict(size=[10 + 32 * (citations[n] / citations_max) ** 0.5 for n in noms], color=couleur,
+                    line=dict(color=theme.SURFACE, width=1.5)),
+        customdata=survols, hovertemplate='%{customdata}<extra></extra>',
+    ))
 
 
 EVOLUTION_TERME_OPTIONS = [
