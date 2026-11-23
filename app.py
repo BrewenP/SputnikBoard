@@ -16,7 +16,7 @@ ONGLETS = {
         ('Évolution de termes dans le temps', "Quels sujets et quels acteurs dominent l'actualité, semaine après semaine ?", 3, True),
     ]),
     'vocabulaire': ('Vocabulaire', [
-        ('Mots émergents', 'Quels mots surgissent puis disparaissent ?', 4, False),
+        ('Mots émergents', 'Quels mots surgissent puis disparaissent ?', 4, True),
         ('Analyse des correspondances', 'Comment le vocabulaire distingue-t-il les périodes ?', 7, True),
     ]),
     'carte': ('Carte', [
