@@ -663,3 +663,39 @@ body {
 #reseau-personnes .scatterlayer .trace:last-child .point {
     cursor: pointer;
 }
+
+.note {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 8px 32px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--grid);
+    color: var(--ink-2);
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.note h3 {
+    margin: 0 0 4px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.note p {
+    margin: 0;
+}
+
+.note strong {
+    color: var(--ink);
+}
+
+.volume .note {
+    grid-template-columns: 1fr;
+    margin-top: 10px;
+    padding-top: 10px;
+    font-size: 12px;
+}

@@ -11,6 +11,7 @@ from dash import Dash, Input, Output, State, ctx, dcc, html, no_update
 
 import theme
 from donnees import AFRICA, COUNTRIES, NAME, articles, compter, emergence, proportion, surrepresentation
+from notes import NOTES
 from themes import themes
 
 ISSUES = 'https://github.com/BrewenP/SputnikBoard/issues/'
@@ -488,10 +489,6 @@ def mots_emergents(periode):
                    range=[-0.5, len(mois) - 0.5], side='top', showgrid=False, showline=False, zeroline=False),
         yaxis=dict(tickmode='array', tickvals=list(range(len(mots))), ticktext=mots, range=[len(mots) - 0.5, -0.5],
                    showgrid=False, showline=False, zeroline=False),
-        annotations=[dict(
-            text="Couleur : score z, écart de la fréquence du mois à la moyenne du mot, en écarts-types. Taille : part des articles du mois qui citent le mot. Mots triés par mois de pic.",
-            xref='paper', yref='paper', x=0, y=0, yshift=-6, yanchor='top', showarrow=False,
-            font=dict(size=11, color=theme.MUTED))],
     )
     return fig
 
@@ -551,6 +548,16 @@ CONTENUS = {
 }
 
 
+def note(titre):
+    """Note explicative d'un graphique (voir notes.py) : comment le lire, comment il est construit."""
+    if titre not in NOTES:
+        return None
+    return html.Div(className='note', children=[
+        html.Div(className='note-partie', children=[html.H3(intitule), dcc.Markdown(NOTES[titre][cle])])
+        for cle, intitule in (('lecture', 'Comment le lire'), ('construction', 'Comment il est construit'))
+    ])
+
+
 def carte(titre, question, ticket, large):
     return html.Div(className='panel wide' if large else 'panel', children=[
         html.H2(titre),
@@ -559,6 +566,7 @@ def carte(titre, question, ticket, large):
             html.Span('Graphique à venir'),
             html.A(f'Ticket #{ticket}', href=f'{ISSUES}{ticket}', target='_blank'),
         ])])),
+        note(titre),
     ])
 
 
@@ -635,6 +643,7 @@ def indicateurs(periode):
         html.Div(className='panel volume', children=[
             html.Div('Articles par mois', className='name'),
             dcc.Graph(figure=volume(periode), config={'displayModeBar': False}),
+            note('Articles par mois'),
         ]),
     ]
 
@@ -833,11 +842,6 @@ def nom_theme(t):
     return THEMES['noms'][t].capitalize()
 
 
-def note_themes():
-    return (f"{THEMES['k']} thèmes extraits par factorisation en matrices non négatives (NMF). "
-            "Aire d'un îlot proportionnelle à son nombre d'articles ; la position des îlots entre eux n'a pas de sens.")
-
-
 @app.callback(Output('themes-carte', 'figure'), Input('periode', 'data'))
 def carte_themes(periode):
     dans = df['mois'].between(*periode).to_numpy()
@@ -865,11 +869,8 @@ def carte_themes(periode):
             font=dict(size=12, color=theme.SERIES[t]), bgcolor='rgba(255,255,255,0.85)',
         ))
     fig.update_layout(
-        height=560, dragmode='zoom', margin=dict(t=20, b=36),
-        xaxis=dict(visible=False), yaxis=dict(visible=False, scaleanchor='x'),
-        annotations=etiquettes + [dict(text=note_themes(), xref='paper', yref='paper', x=0, y=0, yshift=-30,
-                                       showarrow=False, xanchor='left', yanchor='bottom',
-                                       font=dict(size=11, color=theme.MUTED))],
+        height=560, dragmode='zoom', margin=dict(t=20, b=8),
+        xaxis=dict(visible=False), yaxis=dict(visible=False, scaleanchor='x'), annotations=etiquettes,
     )
     return fig
 
