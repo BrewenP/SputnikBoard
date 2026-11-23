@@ -10,14 +10,14 @@ import prince
 from dash import Dash, Input, Output, State, ctx, dcc, html, no_update
 
 import theme
-from donnees import AFRICA, COUNTRIES, NAME, articles, emergence, proportion, surrepresentation
+from donnees import AFRICA, COUNTRIES, NAME, articles, compter, emergence, proportion, surrepresentation
 from themes import themes
 
 ISSUES = 'https://github.com/BrewenP/SputnikBoard/issues/'
 
 ONGLETS = {
     'evolution': ('Évolution', [
-        ('Évolution de termes dans le temps', "Quels sujets et quels acteurs dominent l'actualité, mois après mois ?", 3, True),
+        ('Évolution des personnes citées', "Quels acteurs dominent l'actualité, mois après mois ?", 3, True),
     ]),
     'vocabulaire': ('Vocabulaire', [
         ('Mots émergents', 'Quels mots surgissent puis disparaissent ?', 4, True),
@@ -100,6 +100,7 @@ def volume(periode):
 
 RESEAU_PERSONNES = 35  # personnes les plus citées de la période
 RESEAU_LIENS = 75  # nombre maximal de liens affichés
+RESEAU_COMMUNS_MIN = 3  # une paire doit avoir au moins 3 articles en commun pour être reliée
 
 
 def reseau_personnes(periode, pays=None):
@@ -112,11 +113,13 @@ def reseau_personnes(periode, pays=None):
     for personnes in sel['personnes']:
         cooccurrences.update(combinations(sorted(principaux & personnes), 2))
 
-    # Plus petit seuil (au moins 2 articles en commun) qui garde au plus RESEAU_LIENS liens.
-    seuil = next((s for s in range(2, max(cooccurrences.values(), default=1) + 1)
-                  if sum(n >= s for n in cooccurrences.values()) <= RESEAU_LIENS), 1)
+    # Indice de Jaccard : articles qui citent les deux / articles qui citent l'un ou l'autre. Contrairement au simple
+    # nombre d'articles en commun, il ne relie pas tout le monde aux personnes les plus citées.
+    liens = sorted(((n / (citations[a] + citations[b] - n), a, b, n) for (a, b), n in cooccurrences.items()
+                    if n >= RESEAU_COMMUNS_MIN), reverse=True)[:RESEAU_LIENS]
     graphe = nx.Graph()
-    graphe.add_weighted_edges_from((a, b, n) for (a, b), n in cooccurrences.items() if n >= seuil)
+    for jaccard, a, b, n in liens:
+        graphe.add_edge(a, b, weight=jaccard, communs=n)
 
     fig = go.Figure()
     fig.update_layout(height=640, xaxis=dict(visible=False), yaxis=dict(visible=False), hovermode='closest')
@@ -151,7 +154,8 @@ def reseau_personnes(periode, pays=None):
         ajouter_noeuds(fig, graphe, position, citations, citations_max, sorted(autres), 'Autres', theme.AXIS)
 
     masques = len(principaux) - graphe.number_of_nodes()
-    note = f'Liens : au moins {seuil} article{"s" if seuil > 1 else ""} en commun'
+    note = (f'Liens : les {graphe.number_of_edges()} paires les plus associées (indice de Jaccard), '
+            f'au moins {RESEAU_COMMUNS_MIN} articles en commun')
     if masques:
         note += f'. {masques} des {len(principaux)} personnes les plus citées, sans lien à ce seuil, ne sont pas affichées'
     fig.add_annotation(text=note, xref='paper', yref='paper', x=0, y=0, showarrow=False, xanchor='left',
@@ -174,8 +178,9 @@ def ajouter_noeuds(fig, graphe, position, citations, citations_max, noms, nom_gr
     survols = []
     for nom in noms:
         voisins = sorted(graphe[nom].items(), key=lambda v: -v[1]['weight'])[:5]
-        survols.append(f'<b>{nom}</b><br>{nombre(citations[nom])} articles<br><br>Le plus souvent avec :<br>'
-                       + '<br>'.join(f'{v} ({nombre(d["weight"])} articles)' for v, d in voisins))
+        survols.append(f'<b>{nom}</b><br>{nombre(citations[nom])} articles<br><br>Le plus associé à :<br>'
+                       + '<br>'.join(f'{v} ({nombre(d["communs"])} articles en commun, Jaccard {decimal(d["weight"])})'
+                                     for v, d in voisins))
     fig.add_trace(go.Scatter(
         x=[position[n][0] for n in noms], y=[position[n][1] for n in noms], mode='markers+text', name=nom_groupe,
         text=noms, textposition='top center', textfont=dict(size=12, color=theme.INK),
@@ -185,27 +190,13 @@ def ajouter_noeuds(fig, graphe, position, citations, citations_max, noms, nom_gr
     ))
 
 
+EVOLUTION_PERSONNES = 20  # personnes les plus citées du corpus, proposées dans la liste
 EVOLUTION_TERME_OPTIONS = [
-    {'label': 'Poutine (personne)', 'value': 'personnes|Poutine'},
-    {'label': 'Trump (personne)', 'value': 'personnes|Trump'},
-    {'label': 'Zelensky (personne)', 'value': 'personnes|Zelensky'},
-    {'label': 'Macron (personne)', 'value': 'personnes|Macron'},
-    {'label': 'Lavrov (personne)', 'value': 'personnes|Lavrov'},
-    {'label': 'Russie (mot-clé)', 'value': 'mots|russie'},
-    {'label': 'Ukraine (mot-clé)', 'value': 'mots|ukraine'},
-    {'label': 'Afrique (mot-clé)', 'value': 'mots|afrique'},
-    {'label': 'Trump (mot-clé)', 'value': 'mots|trump'},
-    {'label': 'Poutine (mot-clé)', 'value': 'mots|poutine'},
-    {'label': 'militaire (mot-clé)', 'value': 'mots|militaire'},
-    {'label': 'gaza (mot-clé)', 'value': 'mots|gaza'},
+    {'label': nom, 'value': f'personnes|{nom}'}
+    for nom, _ in Counter(p for s in df['personnes'] for p in s).most_common(EVOLUTION_PERSONNES)
 ]
 
-EVOLUTION_TERME_DEFAUT = [
-    'personnes|Poutine',
-    'personnes|Trump',
-    'mots|russie',
-    'mots|ukraine',
-]
+EVOLUTION_TERME_DEFAUT = ['personnes|Poutine', 'personnes|Trump', 'personnes|Zelensky', 'personnes|Macron']
 
 EVENEMENTS = [
     ('2025-02', 'Début des pourparlers Russie-États-Unis à Riyad'),
@@ -235,7 +226,7 @@ def evolution_termes(periode, selection):
                 title='Part des articles',
             ),
             annotations=[dict(
-                text='Sélectionnez au moins un terme',
+                text='Sélectionnez au moins une personne',
                 xref='paper',
                 yref='paper',
                 x=0.5,
@@ -251,7 +242,7 @@ def evolution_termes(periode, selection):
         colonne, terme = valeur.split('|', 1)
         serie = proportion(sel, colonne, [terme], par='mois').reindex(mois_selectionnes)
         label = next(
-            (o['label'].replace(' (personne)', '').replace(' (mot-clé)', '')
+            (o['label']
              for o in EVOLUTION_TERME_OPTIONS if o['value'] == valeur),
             terme,
         )
@@ -263,7 +254,7 @@ def evolution_termes(periode, selection):
             name=label,
             customdata=[libelle(m, LONGS) for m in mois_selectionnes],
             text=[label] * len(mois_selectionnes),
-            hovertemplate='<b>%{customdata}</b><br>Terme : %{text}<br>Part : %{y:.1%}<extra></extra>',
+            hovertemplate='<b>%{customdata}</b><br>%{text} : cité dans %{y:.1%} des articles<extra></extra>',
         ))
 
     for mois, texte in EVENEMENTS:
@@ -302,9 +293,15 @@ MODES = {
     'mots': ('Mots clés', 'mots', 20, 'occurrences'),
     'personnes': ('Personnes', 'personnes', 8, 'articles'),
 }
+# Termes qui ont servi à constituer les deux corpus : forcément surreprésentés, ils n'apprennent rien.
+DEFINITOIRES = {
+    'mots': {'france', 'français', 'macron', 'emmanuel', 'russie', 'russe', 'poutine', 'vladimir'},
+    'personnes': {'Macron', 'Poutine'},
+}
 FRANCE = ('France / Macron', theme.DIVERGING[1])
 RUSSIE = ('Russie / Poutine', theme.DIVERGING[5])
 TOP = 15
+SEUIL_Z = 1.96
 
 
 def decimal(x, signe=False):
@@ -314,38 +311,51 @@ def decimal(x, signe=False):
 def discours(periode, mode):
     _, colonne, minimum, unite = MODES[mode]
     fr, ru = (d[d['mois'].between(*periode)] for d in (macron, poutine))
-    s = surrepresentation(ru, fr, colonne, minimum)  # score > 0 : côté Russie, score < 0 : côté France
-    cotes = {
-        FRANCE: s[s['score'] < 0].tail(TOP).iloc[::-1],
-        RUSSIE: s[s['score'] > 0].head(TOP),
+    communs = set(fr['titre']) & set(ru['titre'])  # articles présents dans les deux corpus, retirés des deux côtés
+    fr, ru = fr[~fr['titre'].isin(communs)], ru[~ru['titre'].isin(communs)]
+    s = surrepresentation(ru, fr, colonne, filtrer(periode), minimum, exclus=DEFINITOIRES[mode])
+    totaux = {FRANCE: sum(compter(fr[colonne]).values()) or 1, RUSSIE: sum(compter(ru[colonne]).values()) or 1}
+    cotes = {  # seuls les écarts significatifs au seuil de 5 % sont affichés
+        FRANCE: s[s['score'] < -SEUIL_Z].tail(TOP).iloc[::-1],
+        RUSSIE: s[s['score'] > SEUIL_Z].head(TOP),
     }
     fig = go.Figure()
     for (nom, couleur), d in cotes.items():
         fig.add_bar(
             x=d['score'], y=list(range(len(d))), orientation='h', name=nom, marker_color=couleur,
             text=d['terme'], textposition='outside', cliponaxis=False,
-            customdata=[(t, decimal(abs(sc)), f'{math.exp(abs(sc)):.1f}'.replace('.', ','), nombre(a), nombre(b))
+            customdata=[(t, decimal(abs(sc)), nombre(a), decimal(1000 * a / totaux[FRANCE]),
+                         nombre(b), decimal(1000 * b / totaux[RUSSIE]))
                         for t, sc, a, b in zip(d['terme'], d['score'], d['freq_b'], d['freq_a'])],
             hovertemplate=(
                 '<b>%{customdata[0]}</b><br>'
-                'Score : %{customdata[1]} (cote ×%{customdata[2]} par rapport à l\'autre corpus)<br>'
-                f'{FRANCE[0]} : %{{customdata[3]}} {unite}<br>'
-                f'{RUSSIE[0]} : %{{customdata[4]}} {unite}<extra></extra>'
+                'Score z : %{customdata[1]}<br>'
+                f'{FRANCE[0]} : %{{customdata[2]}} {unite} (%{{customdata[3]}} pour 1 000)<br>'
+                f'{RUSSIE[0]} : %{{customdata[4]}} {unite} (%{{customdata[5]}} pour 1 000)<extra></extra>'
             ),
         )
-    if s.empty:
-        fig.add_annotation(text='Pas assez de données sur cette période', showarrow=False, font=dict(color=theme.MUTED))
-    bord = max(s['score'].abs().max() if not s.empty else 1, 1)
-    graduations = list(range(-math.ceil(bord), math.ceil(bord) + 1))
+    bord = max(s['score'].abs().max() if not s.empty else 2, 2)
+    pas = 1 if bord < 6 else 2
+    graduations = list(range(-math.ceil(bord) // pas * pas, math.ceil(bord) + 1, pas))
     fig.add_vline(x=0, line_color=theme.AXIS)
+    for x in (-SEUIL_Z, SEUIL_Z):
+        fig.add_vline(x=x, line_color=theme.MUTED, line_dash='dot', line_width=1)
     fig.update_layout(
-        barmode='overlay', height=max(TOP, *(len(d) for d in cotes.values())) * 30 + 130,
+        barmode='overlay', height=max(TOP, *(len(d) for d in cotes.values())) * 30 + 150,
         xaxis=dict(
             range=[-bord * 1.35, bord * 1.35], tickvals=graduations, ticktext=[str(abs(g)) for g in graduations],
-            showgrid=True, title='Score de surreprésentation (logarithme du rapport de cotes)',
+            showgrid=True, title='Score de surreprésentation (score z, en pointillés le seuil de significativité de 5 %)',
         ),
         yaxis=dict(autorange='reversed', showticklabels=False, showgrid=False, showline=False),
+        annotations=[dict(
+            text=f'{nombre(len(communs))} articles communs aux deux corpus retirés. '
+                 f'Termes qui définissent les corpus exclus : {", ".join(sorted(DEFINITOIRES[mode]))}.',
+            xref='paper', yref='paper', x=0, y=0, yshift=-58, yanchor='top', showarrow=False,
+            font=dict(size=11, color=theme.MUTED))],
+        margin=dict(b=70),
     )
+    if all(d.empty for d in cotes.values()):
+        fig.add_annotation(text='Aucun écart significatif sur cette période', showarrow=False, font=dict(color=theme.MUTED))
     return fig
 
 
@@ -356,35 +366,45 @@ def part(x):
     return f'{x * 100:.1f}'.replace('.', ',') + ' %'
 
 
+TOUTE_PERIODE = 'periode'
+
+
 def carte_pays(periode, vue):
     sel = filtrer(periode)
     codes = sorted(AFRICA if vue == 'afrique' else COUNTRIES)
-    parts = proportion(sel, 'pays', codes)
-    n_articles = sel.groupby('mois').size()
-    mois = list(parts.index)
-    zmax = max(float(parts.to_numpy().max()), 0.01)  # même échelle pour toutes les images
+    presence = pd.DataFrame({c: sel['pays'].map(lambda s: c in s) for c in codes})
+    parts = presence.groupby(sel['mois']).mean()
+    parts.loc[TOUTE_PERIODE] = presence.mean()
+    effectifs = sel.groupby('mois').size()
+    effectifs[TOUTE_PERIODE] = len(sel)
+    images = [TOUTE_PERIODE, *sel['mois'].drop_duplicates().sort_values()]
 
     def trace(m):
         z = parts.loc[m]
+        quand = 'de la période' if m == TOUTE_PERIODE else 'du mois'
         return go.Choropleth(
-            locations=codes, z=z.values, locationmode='ISO-3', zmin=0, zmax=zmax,
-            colorscale=theme.SEQUENTIAL, marker_line_width=0.5, marker_line_color=theme.AXIS,
+            # Échelle propre à chaque image : un mois très concentré n'écrase plus les autres.
+            locations=codes, z=z.values, locationmode='ISO-3', zmin=0, zmax=max(float(z.max()), 0.01),
+            colorscale=theme.SEQUENTIAL_SIGNAL, marker_line=dict(color=theme.AXIS, width=0.5),
             colorbar=dict(title='Part des articles', tickformat='.0%', thickness=12, len=0.7, outlinewidth=0),
-            customdata=[(NAME[c], part(v), nombre(round(v * n_articles[m]))) for c, v in z.items()],
-            hovertemplate='<b>%{customdata[0]}</b><br>%{customdata[1]} des articles du mois '
+            customdata=[(NAME[c], part(v), nombre(round(v * effectifs[m]))) for c, v in z.items()],
+            hovertemplate=f'<b>%{{customdata[0]}}</b><br>%{{customdata[1]}} des articles {quand} '
                           '(%{customdata[2]} articles)<extra></extra>',
         )
 
+    def nom_image(m):
+        return 'Toute la période' if m == TOUTE_PERIODE else libelle(m, LONGS)
+
     cadre = dict(duration=700, redraw=True)
     fig = go.Figure(
-        data=trace(mois[0]),
-        frames=[go.Frame(data=[trace(m)], name=m) for m in mois],
+        data=trace(TOUTE_PERIODE),
+        frames=[go.Frame(data=[trace(m)], name=m) for m in images],
     )
     fig.update_geos(scope='africa' if vue == 'afrique' else 'world', projection_type='natural earth')
     if vue == 'monde':  # cadrage explicite : sinon la carte garde le décalage de la vue Afrique
         fig.update_geos(lonaxis_range=[-180, 180], lataxis_range=[-58, 85], projection_rotation_lon=0)
     fig.update_layout(
-        height=560, margin=dict(l=0, r=0, t=8, b=0), dragmode=False, uirevision=vue,
+        height=580, margin=dict(l=0, r=0, t=8, b=0), dragmode=False, uirevision=vue,
         updatemenus=[dict(
             type='buttons', direction='left', x=0, y=0, xanchor='left', yanchor='top', pad=dict(t=30, l=4),
             buttons=[
@@ -397,11 +417,11 @@ def carte_pays(periode, vue):
         )],
         sliders=[dict(
             x=0.2, y=0, len=0.8, xanchor='left', yanchor='top', pad=dict(t=30, b=0),
-            currentvalue=dict(prefix='Mois : ', font=dict(size=13, color=theme.INK_2)),
+            currentvalue=dict(prefix='Vue : ', font=dict(size=13, color=theme.INK_2)),
             font=dict(size=10, color=theme.MUTED),
-            steps=[dict(label=libelle(m), method='animate',
+            steps=[dict(label='Période' if m == TOUTE_PERIODE else libelle(m), value=nom_image(m), method='animate',
                         args=[[m], dict(mode='immediate', frame=dict(duration=0, redraw=True),
-                                        transition=dict(duration=0))]) for m in mois],
+                                        transition=dict(duration=0))]) for m in images],
         )],
     )
     return fig
@@ -429,19 +449,29 @@ def mots_emergents(periode):
     borne = min(EMERGENTS_SCORE_MAX, float(z.max()))  # sur n mois, un score ne dépasse pas racine(n - 1)
     teintes = sample_colorscale(theme.DIVERGING_SIGNAL, ((z.clip(-borne, borne) + borne) / (2 * borne)).ravel())
 
-    # Cases arrondies façon calendrier : un rectangle par case, en unités d'axe. Plotly ne connaît pas la taille
-    # en pixels du graphique, on l'estime pour obtenir des écarts et des arrondis d'environ 3 pixels.
+    # Cases arrondies façon calendrier, dessinées en unités d'axe. Plotly ne connaît pas la taille en pixels du
+    # graphique : on l'estime (largeur et hauteur d'une case) pour obtenir de vrais carrés.
+    # Un carré gris de fond par case, et un carré coloré dont l'aire suit la part des articles du mois qui citent le mot.
     largeur, hauteur = 1100 / len(mois), (EMERGENTS_HAUTEUR - 90) / len(mots)
-    gx, gy, rx, ry = 1.5 / largeur, 1.5 / hauteur, 4 / largeur, 4 / hauteur
-    cases = []
-    for k, teinte in enumerate(teintes):
-        i, j = divmod(k, len(mois))
-        x0, x1, y0, y1 = j - 0.5 + gx, j + 0.5 - gx, i - 0.5 + gy, i + 0.5 - gy
-        cases.append(dict(
+    cote_max = min(largeur, hauteur) - 3
+    cotes = cote_max * (freq.to_numpy() / max(float(freq.to_numpy().max()), 1e-9)) ** 0.5
+
+    def case(i, j, cote, teinte):
+        dx, dy = cote / largeur / 2, cote / hauteur / 2
+        ax, ay = 0.22 * dx * 2, 0.22 * dy * 2
+        x0, x1, y0, y1 = j - dx, j + dx, i - dy, i + dy
+        return dict(
             type='path', layer='below', fillcolor=teinte, line_width=0,
-            path=f'M{x0 + rx},{y0} L{x1 - rx},{y0} Q{x1},{y0} {x1},{y0 + ry} L{x1},{y1 - ry} Q{x1},{y1} {x1 - rx},{y1} '
-                 f'L{x0 + rx},{y1} Q{x0},{y1} {x0},{y1 - ry} L{x0},{y0 + ry} Q{x0},{y0} {x0 + rx},{y0} Z',
-        ))
+            path=f'M{x0 + ax},{y0} L{x1 - ax},{y0} Q{x1},{y0} {x1},{y0 + ay} L{x1},{y1 - ay} Q{x1},{y1} {x1 - ax},{y1} '
+                 f'L{x0 + ax},{y1} Q{x0},{y1} {x0},{y1 - ay} L{x0},{y0 + ay} Q{x0},{y0} {x0 + ax},{y0} Z',
+        )
+
+    cases = []
+    for k, (teinte, cote) in enumerate(zip(teintes, cotes.ravel())):
+        i, j = divmod(k, len(mois))
+        cases.append(case(i, j, cote_max, theme.FOND_CASE))
+        if cote > 0:
+            cases.append(case(i, j, max(cote, 4), teinte))
 
     # Heatmap transparente posée sur les cases : elle porte l'infobulle et la légende des couleurs.
     fig.add_trace(go.Heatmap(
@@ -459,7 +489,7 @@ def mots_emergents(periode):
         yaxis=dict(tickmode='array', tickvals=list(range(len(mots))), ticktext=mots, range=[len(mots) - 0.5, -0.5],
                    showgrid=False, showline=False, zeroline=False),
         annotations=[dict(
-            text="Score = écart de la fréquence du mois à la moyenne du mot, en écarts-types. Mots triés par mois de pic.",
+            text="Couleur : score z, écart de la fréquence du mois à la moyenne du mot, en écarts-types. Taille : part des articles du mois qui citent le mot. Mots triés par mois de pic.",
             xref='paper', yref='paper', x=0, y=0, yshift=-6, yanchor='top', showarrow=False,
             font=dict(size=11, color=theme.MUTED))],
     )
@@ -477,11 +507,11 @@ def bandeau(nom, actions):
 CONTENUS = {
     3: [
         html.Div(className='termes-controles', children=[
-            html.Div('Termes affichés', className='label'),
+            html.Div('Personnes affichées', className='label'),
             html.Div(className='termes-selection', children=[
                 dcc.Dropdown(
                     id='termes-evolution', options=EVOLUTION_TERME_OPTIONS, value=EVOLUTION_TERME_DEFAUT,
-                    multi=True, clearable=False, placeholder='Sélectionner des termes',
+                    multi=True, clearable=False, placeholder='Sélectionner des personnes',
                 ),
                 html.Button('Tout désélectionner', id='tout-deselectionner', className='termes-clear', n_clicks=0),
             ]),
@@ -513,7 +543,10 @@ CONTENUS = {
         ),
         dcc.Graph(id='discours-graphique', config={'displayModeBar': False}),
     ],
-    'Carte des articles': [dcc.Graph(id='themes-carte', config={'displayModeBar': False})],
+    'Carte des articles': [
+        html.P('Faire glisser pour zoomer sur une zone, double-cliquer pour revenir à la vue complète.', className='astuce'),
+        dcc.Graph(id='themes-carte', config={'displayModeBar': False, 'doubleClick': 'reset'}),
+    ],
     'Évolution des thèmes': [dcc.Graph(id='themes-evolution', config={'displayModeBar': False})],
 }
 
@@ -588,14 +621,14 @@ def choisir_periode(valeur):
 @app.callback(Output('indicateurs', 'children'), Input('periode', 'data'))
 def indicateurs(periode):
     sel = filtrer(periode)
-    personnes = Counter(p for s in sel['personnes'] for p in s)
+    personne, n_personne = Counter(p for s in sel['personnes'] for p in s).most_common(1)[0]
     pays, n_pays = Counter(p for s in sel['pays'] for p in s & AFRICA).most_common(1)[0]
     afrique = sel['pays'].map(lambda s: bool(s & AFRICA)).mean()
     mois = sel['mois'].nunique()
     return [
         html.Div(className='panel chiffres', key='-'.join(periode), children=[
             kpi(nombre(len(sel)), 'articles', f'{nombre(round(len(sel) / mois))} par mois en moyenne'),
-            kpi(nombre(len(personnes)), 'personnes citées', f'la plus citée : {personnes.most_common(1)[0][0]}'),
+            kpi(personne, 'personne la plus citée', f'dans {pourcent(n_personne / len(sel))} des articles'),
             kpi(pourcent(afrique), "parlent d'un pays africain", 'au moins un pays africain cité'),
             kpi(NAME[pays], 'pays africain le plus cité', f'dans {pourcent(n_pays / len(sel))} des articles'),
         ]),
@@ -669,7 +702,7 @@ def choisir_termes(_, clic, valeur, options):
         return no_update, no_update, no_update, no_update, no_update
     terme = f'personnes|{nom}'
     if terme not in [o['value'] for o in options]:
-        options = options + [{'label': f'{nom} (personne)', 'value': terme}]
+        options = options + [{'label': nom, 'value': terme}]
     if terme not in valeur:
         valeur = valeur + [terme]
     return valeur, options, False, [html.B(nom), " ajouté au graphique d'évolution"], None
@@ -687,6 +720,7 @@ def changer_onglet(*_):
 
 AFC_FREQUENTS = 200  # mots clés les plus fréquents de la période, gardés pour le tableau de contingence
 AFC_AFFICHES = 30  # mots qui contribuent le plus aux deux axes, affichés sur le graphique
+AFC_MIN_ARTICLES = 300  # en dessous, un mois est projeté en élément supplémentaire
 
 
 def sans_chevauchement(points, ecart=(0.08, 0.05)):
@@ -706,11 +740,16 @@ def mettre_a_jour_emergents(periode):
     return mots_emergents(periode)
 
 
+def pole(contributions, coordonnees, signe, n=3):
+    """Mots qui tirent le plus l'axe d'un côté (signe -1 ou 1) : plus fortes contributions de ce côté."""
+    return ', '.join(contributions[coordonnees * signe > 0].nlargest(n).index)
+
+
 @app.callback(Output('afc-graphique', 'figure'), Input('periode', 'data'))
 def afc(periode):
     sel = filtrer(periode)
     fig = go.Figure()
-    fig.update_layout(height=600)
+    fig.update_layout(height=680)
     if sel['mois'].nunique() < 3:
         fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), annotations=[dict(
             text="Choisir au moins 3 mois pour l'analyse des correspondances.", showarrow=False,
@@ -723,41 +762,59 @@ def afc(periode):
     paires = paires[paires['mot'].isin(frequents)]
     tableau = pd.crosstab(paires['mot'], paires['mois'])
 
-    ca = prince.CA(n_components=2, random_state=0).fit(tableau)
-    mots, mois = ca.row_coordinates(tableau), ca.column_coordinates(tableau)
-    # Carte asymétrique : les mois en coordonnées standard (divisées par la racine de la valeur propre)
-    # s'écartent du centre, et chaque mot se place au barycentre des mois où il apparaît le plus.
-    mois = mois / ca.eigenvalues_ ** 0.5
+    # Les mois peu fournis (avant la rupture de collecte) ont des profils instables : ils sont projetés sur la carte
+    # en éléments supplémentaires, sans participer au calcul des axes.
+    effectifs = sel['mois'].value_counts()
+    actifs = [m for m in tableau.columns if effectifs[m] >= AFC_MIN_ARTICLES]
+    if len(actifs) < 3:
+        actifs = list(tableau.columns)
+    ca = prince.CA(n_components=2, random_state=0).fit(tableau[actifs])
     inertie = ca.percentage_of_variance_
+    # Carte asymétrique : les mois en coordonnées standard (divisées par la racine de la valeur propre) forment le
+    # cadre, et chaque mot se place au barycentre des mois où il apparaît : un mot proche d'un mois y est surreprésenté.
+    mots, mois = ca.row_coordinates(tableau[actifs]), ca.column_coordinates(tableau) / ca.eigenvalues_ ** 0.5
+    contributions = ca.row_contributions_
+    mots_tous = mots
     # Mots les plus variables dans le temps : ceux qui contribuent le plus à la construction des deux axes.
-    contribution = ca.row_contributions_[0] * inertie[0] + ca.row_contributions_[1] * inertie[1]
-    mots = mots.loc[contribution.nlargest(AFC_AFFICHES).index]
+    mots = mots.loc[(contributions[0] * inertie[0] + contributions[1] * inertie[1]).nlargest(AFC_AFFICHES).index]
 
-    extremes = [mois.index[0], mois.index[-1]]
-    ordre_mois = extremes + list((mois[0] ** 2 + mois[1] ** 2).drop(extremes).sort_values(ascending=False).index)
+    ordre_mois = list((mois[0] ** 2 + mois[1] ** 2).sort_values(ascending=False).index)
     points = [(mois.loc[m, 0], mois.loc[m, 1]) for m in ordre_mois] + list(zip(mots[0], mots[1]))
-    visibles = sans_chevauchement(points)
+    visibles = sans_chevauchement(points, ecart=(0.06, 0.035))
     mois_visibles = {m for m, v in zip(ordre_mois, visibles) if v}
     etiquettes = [m if v else '' for m, v in zip(mots.index, visibles[len(ordre_mois):])]
 
     fig.add_trace(go.Scatter(
         x=mots[0], y=mots[1], mode='markers+text', name='Mots clés', text=etiquettes, textposition='top center',
-        marker=dict(color=theme.SERIES[1], size=6), textfont=dict(color=theme.SERIES[1], size=12),
+        marker=dict(color=theme.ACCENT, size=6, opacity=0.8), textfont=dict(color=theme.ORANGE_TEXTE, size=12),
         customdata=list(zip(mots.index, tableau.loc[mots.index].sum(axis=1))),
         hovertemplate='<b>%{customdata[0]}</b><br>dans %{customdata[1]} articles<extra></extra>',
     ))
-    fig.add_trace(go.Scatter(
-        x=mois[0], y=mois[1], mode='lines+markers+text', name='Mois (du plus clair au plus foncé)',
-        text=[libelle(m) if m in mois_visibles else '' for m in mois.index], textposition='top center',
-        line=dict(color=theme.AXIS, width=1),
-        marker=dict(color=list(range(len(mois))), colorscale=theme.SEQUENTIAL[1:], size=10,
-                    line=dict(color=theme.SURFACE, width=1.5)),
-        textfont=dict(color=theme.SEQUENTIAL[-2], size=11), customdata=[libelle(m, LONGS) for m in mois.index],
-        hovertemplate='<b>%{customdata}</b><extra></extra>',
-    ))
+    for nom, liste, plein in (('Mois', actifs, True), ('Mois peu fournis, projetés sans peser sur les axes',
+                                                    [m for m in mois.index if m not in actifs], False)):
+        if not liste:
+            continue
+        rang = [list(mois.index).index(m) for m in liste]
+        fig.add_trace(go.Scatter(
+            x=mois.loc[liste, 0], y=mois.loc[liste, 1], mode='markers+text', name=nom,
+            text=[libelle(m) if m in mois_visibles else '' for m in liste], textposition='bottom center',
+            marker=dict(size=13, symbol='circle' if plein else 'circle-open', line=dict(width=1.5 if plein else 2),
+                        color=[theme.SEQUENTIAL[1 + round(r * (len(theme.SEQUENTIAL) - 2) / max(len(mois) - 1, 1))]
+                               for r in rang]),
+            textfont=dict(color=theme.SEQUENTIAL[-2], size=12),
+            customdata=[(libelle(m, LONGS), nombre(effectifs[m])) for m in liste],
+            hovertemplate='<b>%{customdata[0]}</b><br>%{customdata[1]} articles<extra></extra>',
+        ))
+
+    def titre(axe):
+        return (f'◀ {pole(contributions[axe], mots_tous[axe], -1)}'
+                f'      Axe {axe + 1} · {pourcent(inertie[axe] / 100)} de l’inertie      '
+                f'{pole(contributions[axe], mots_tous[axe], 1)} ▶')
+
     fig.update_layout(
-        xaxis=dict(title=f'Axe 1 ({pourcent(inertie[0] / 100)} de l’inertie)', zeroline=True, zerolinecolor=theme.AXIS),
-        yaxis=dict(title=f'Axe 2 ({pourcent(inertie[1] / 100)} de l’inertie)', zeroline=True, zerolinecolor=theme.AXIS),
+        legend=dict(itemsizing='constant'),
+        xaxis=dict(title=titre(0), zeroline=True, zerolinecolor=theme.AXIS, showgrid=False, showticklabels=False),
+        yaxis=dict(title=titre(1), zeroline=True, zerolinecolor=theme.AXIS, showgrid=False, showticklabels=False),
     )
     return fig
 
@@ -777,12 +834,8 @@ def nom_theme(t):
 
 
 def note_themes():
-    s, k = THEMES['silhouettes'], THEMES['k']
-    if k == max(s):
-        raison = f'la silhouette croît avec le nombre de thèmes, plafonné à {k} pour garder des couleurs distinctes'
-    else:
-        raison = f'meilleure silhouette entre {min(s)} et {max(s)} thèmes'
-    return f"{k} thèmes : {raison} (silhouette {s[k]:.2f})".replace('.', ',')
+    return (f"{THEMES['k']} thèmes extraits par factorisation en matrices non négatives (NMF). "
+            "Aire d'un îlot proportionnelle à son nombre d'articles ; la position des îlots entre eux n'a pas de sens.")
 
 
 @app.callback(Output('themes-carte', 'figure'), Input('periode', 'data'))
@@ -792,20 +845,31 @@ def carte_themes(periode):
         x=THEMES['x'][~dans], y=THEMES['y'][~dans], mode='markers', name='Hors période',
         marker=dict(color=theme.GRID, size=4), hoverinfo='skip', showlegend=False,
     ))
+    etiquettes = []
     for t in range(THEMES['k']):
-        choix = dans & (df['theme'] == t).to_numpy()
+        du_theme = (df['theme'] == t).to_numpy()
+        choix = dans & du_theme
         sel = df[choix]
         fig.add_trace(go.Scattergl(
-            x=THEMES['x'][choix], y=THEMES['y'][choix], mode='markers', name=nom_theme(t),
-            marker=dict(color=theme.SERIES[t], size=4, opacity=0.7),
-            customdata=list(zip(sel['titre'], sel['date'].dt.strftime('%d/%m/%Y'))),
-            hovertemplate=f'<b>%{{customdata[0]}}</b><br>%{{customdata[1]}}<br>Thème : {nom_theme(t)}<extra></extra>',
+            x=THEMES['x'][choix], y=THEMES['y'][choix], mode='markers', name=nom_theme(t), showlegend=False,
+            marker=dict(color=theme.SERIES[t], size=5, opacity=0.75),
+            customdata=list(zip(sel['titre'], sel['date'].dt.strftime('%d/%m/%Y'), [pourcent(p) for p in THEMES['part'][choix]])),
+            hovertemplate=f'<b>%{{customdata[0]}}</b><br>%{{customdata[1]}}<br>Thème : {nom_theme(t)} '
+                          '(%{customdata[2]} de l\'article)<extra></extra>',
+        ))
+        (cx, cy), r = THEMES['centres'][t], THEMES['rayons'][t]
+        haut = cy >= 0
+        etiquettes.append(dict(
+            x=cx, y=cy + r if haut else cy - r, yanchor='bottom' if haut else 'top', showarrow=False,
+            text=f"<b>{'<br>'.join(nom_theme(t).rsplit(', ', 1))}</b><br>{nombre(int(choix.sum()))} articles",
+            font=dict(size=12, color=theme.SERIES[t]), bgcolor='rgba(255,255,255,0.85)',
         ))
     fig.update_layout(
-        height=560, legend=dict(orientation='v', x=1.02, y=1, yanchor='top', traceorder='normal', itemsizing='constant'),
+        height=560, dragmode='zoom', margin=dict(t=20, b=36),
         xaxis=dict(visible=False), yaxis=dict(visible=False, scaleanchor='x'),
-        annotations=[dict(text=note_themes(), xref='paper', yref='paper', x=0, y=0, showarrow=False,
-                          xanchor='left', yanchor='bottom', font=dict(size=11, color=theme.MUTED))],
+        annotations=etiquettes + [dict(text=note_themes(), xref='paper', yref='paper', x=0, y=0, yshift=-30,
+                                       showarrow=False, xanchor='left', yanchor='bottom',
+                                       font=dict(size=11, color=theme.MUTED))],
     )
     return fig
 

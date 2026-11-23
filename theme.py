@@ -11,12 +11,15 @@ MUTED = '#6f7178'
 GRID = '#e3e3e0'
 AXIS = '#c4c4c0'
 ACCENT = '#ff6a13'
+FOND_CASE = '#f5f4f1'  # fond d'une case vide sur la heatmap
+ORANGE_TEXTE = '#c24c06'  # orange plus sombre, lisible en texte sur fond blanc
 
 SERIES = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948']
 SEQUENTIAL = ['#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5', '#256abf', '#184f95', '#0d366b']
+SEQUENTIAL_SIGNAL = ['#f1f0ed', '#ffe0cc', '#ffbf94', '#ff9a5c', '#ff6a13', '#d4520a', '#9c3a05']
 DIVERGING = ['#184f95', '#3987e5', '#9ec5f4', '#f0efec', '#f2a7a6', '#e34948', '#a82b2b']
 DIVERGING_SIGNAL = [
-    [0, '#184f95'], [0.12, '#3987e5'], [0.3, '#9ec5f4'], [0.5, '#ecebe7'],
+    [0, '#184f95'], [0.12, '#3987e5'], [0.3, '#9ec5f4'], [0.5, '#d9d7d2'],
     [0.66, '#ffd2b5'], [0.82, '#ff965a'], [0.92, ACCENT], [1, '#c94a06'],
 ]
 

@@ -29,7 +29,7 @@ STOP = {
     'générer', 'ia', 'face', 'clé', 'local', 'spécial', 'renforcer', 'soutenir', 'service', 'site', 'centre',
     'interactif', 'emplacement', 'consulter', 'infographie', 'sputnikinfographie', 'sputnikinfographi',
 }
-LEMMES = {'gazer': 'gaza'}
+LEMMES = {'gazer': 'gaza', 'pari': 'paris'}
 NOT_PERSON = {
     'washington', 'victoire', 'burkinab', 'sputnik', 'sputnikradio', 'afrique', 'kremlin', 'moscou', 'kiev',
     'guin', 'fran', 'faso', 'ivoire', 'premier', 'ministre', 'castbox', 'bloomberg', 'rosatom', 'sergue', 'gate',
@@ -126,27 +126,32 @@ def compter(serie):
     return total
 
 
-def surrepresentation(a, b, colonne, minimum=20, lissage=0.5):
-    """Surreprésentation relative de chaque terme de `a` par rapport à `b` (logarithme du rapport de cotes).
+def surrepresentation(a, b, colonne, fond, minimum=20, a0=10_000, exclus=()):
+    """Surreprésentation de chaque terme de `a` par rapport à `b` : log-odds pondéré avec a priori de Dirichlet
+    (Monroe, Colaresi et Quinn, 2008, « Fightin' Words »).
 
-    Pour un terme, la cote dans un corpus est sa fréquence divisée par la fréquence de tous les autres termes.
-    Le score est le logarithme népérien du rapport des cotes : positif si le terme est plus caractéristique
-    de `a`, négatif s'il l'est de `b`, proche de 0 s'il est utilisé de la même façon des deux côtés.
-    Le lissage (`lissage` ajouté à chaque fréquence) évite de diviser par zéro quand un terme est absent d'un corpus.
-    Les termes dont la fréquence cumulée est inférieure à `minimum` sont écartés.
+    On compare les cotes d'un terme dans les deux corpus (sa fréquence divisée par celle de tous les autres termes),
+    en ajoutant à chaque fréquence un a priori tiré du corpus de référence `fond` : `a0` occurrences réparties
+    selon les fréquences de `fond`. Le logarithme du rapport des cotes est ensuite divisé par son écart-type :
+    on obtient un score z, positif si le terme caractérise `a`, négatif s'il caractérise `b`. Contrairement au
+    simple rapport des cotes, ce score ne survalorise pas les termes rares ou absents d'un des deux corpus :
+    au-delà de 1,96 en valeur absolue, l'écart est significatif au seuil de 5 %.
+    Les termes de `exclus` et ceux dont la fréquence cumulée est inférieure à `minimum` sont écartés.
 
     Renvoie un tableau trié par score décroissant, avec les colonnes `terme`, `freq_a`, `freq_b` et `score`.
     """
-    ca, cb = compter(a[colonne]), compter(b[colonne])
-    ta, tb = sum(ca.values()), sum(cb.values())
+    ca, cb, cf = compter(a[colonne]), compter(b[colonne]), compter(fond[colonne])
+    for terme in exclus:
+        ca.pop(terme, None), cb.pop(terme, None)
+    ta, tb, tf = sum(ca.values()), sum(cb.values()), sum(cf.values())
     lignes = []
     for terme in ca.keys() | cb.keys():
         fa, fb = ca[terme], cb[terme]
-        if fa + fb < minimum:
+        if fa + fb < minimum or not cf[terme]:
             continue
-        cote_a = (fa + lissage) / (ta - fa + lissage)
-        cote_b = (fb + lissage) / (tb - fb + lissage)
-        lignes.append((terme, fa, fb, math.log(cote_a / cote_b)))
+        p = a0 * cf[terme] / tf
+        ecart = math.log((fa + p) / (ta + a0 - fa - p)) - math.log((fb + p) / (tb + a0 - fb - p))
+        lignes.append((terme, fa, fb, ecart / math.sqrt(1 / (fa + p) + 1 / (fb + p))))
     return pd.DataFrame(lignes, columns=['terme', 'freq_a', 'freq_b', 'score']).sort_values(
         ['score', 'terme'], ascending=[False, True], ignore_index=True)
 
