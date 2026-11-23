@@ -1,5 +1,7 @@
 from collections import Counter
+from itertools import combinations
 
+import networkx as nx
 import plotly.graph_objects as go
 from dash import Dash, Input, Output, ctx, dcc, html
 
@@ -85,6 +87,123 @@ def volume(periode):
         height=196, margin=dict(l=0, r=0, t=8, b=0),
         xaxis=dict(tickmode='array', tickvals=x[::3], showline=False),
         yaxis=dict(nticks=3, showline=False),
+    )
+    return fig
+
+
+def reseau_personnes(periode):
+    sel = filtrer(periode)
+    articles_personnes = Counter(p for personnes in sel['personnes'] for p in personnes)
+    principaux = [nom for nom, _ in articles_personnes.most_common(35)]
+    principaux_set = set(principaux)
+
+    cooccurrences = Counter()
+    for personnes in sel['personnes']:
+        presentes = sorted(principaux_set & personnes)
+        cooccurrences.update(combinations(presentes, 2))
+
+    liens = []
+    seuil = 1
+    for seuil_candidat in (2, 3, 4, 5, 6, 8):
+        candidats = [(a, b, poids) for (a, b), poids in cooccurrences.items() if poids >= seuil_candidat]
+        if len(candidats) <= 75:
+            seuil = seuil_candidat
+            liens = candidats
+            break
+    if not liens:
+        seuil = 1
+        liens = [(a, b, poids) for (a, b), poids in cooccurrences.items() if poids >= seuil]
+
+    graphe = nx.Graph()
+    graphe.add_nodes_from(principaux)
+    graphe.add_weighted_edges_from(liens)
+
+    couleurs = [
+        '#2a78d6', '#ff6a13', '#36a269', '#9854cc', '#d94f70',
+        '#8a6b4f', '#168c92', '#d1a21f', '#627ac0', '#c45b2d',
+    ]
+    communautes = list(nx.community.greedy_modularity_communities(graphe, weight='weight', resolution=1))
+    couleur_par_personne = {}
+    for numero, groupe in enumerate(communautes):
+        for personne in groupe:
+            couleur_par_personne[personne] = couleurs[numero % len(couleurs)]
+
+    position = nx.spring_layout(graphe, k=0.58, iterations=80, seed=42, weight='weight')
+    max_articles = max((articles_personnes[nom] for nom in principaux), default=1)
+    min_articles = min((articles_personnes[nom] for nom in principaux), default=1)
+    max_poids = max((poids for _, _, poids in liens), default=1)
+
+    fig = go.Figure()
+    for a, b, poids in liens:
+        x0, y0 = position[a]
+        x1, y1 = position[b]
+        intensite = poids / max_poids
+        fig.add_trace(go.Scatter(
+            x=[x0, x1, None],
+            y=[y0, y1, None],
+            mode='lines',
+            line=dict(width=0.6 + 3.4 * intensite, color=f'rgba(128,132,140,{0.25 + 0.55 * intensite:.2f})'),
+            hoverinfo='skip',
+            showlegend=False,
+        ))
+
+    tailles = []
+    for nom in principaux:
+        if max_articles == min_articles:
+            tailles.append(20)
+        else:
+            ratio = (articles_personnes[nom] - min_articles) / (max_articles - min_articles)
+            tailles.append(12 + 24 * ratio)
+
+    textes = []
+    survol = []
+    for nom in principaux:
+        voisins = sorted(
+            ((graphe[nom][voisin].get('weight', 0), voisin) for voisin in graphe.neighbors(nom)),
+            reverse=True,
+        )
+        voisins_texte = '<br>'.join(f'{voisin} ({poids})' for poids, voisin in voisins[:5])
+        textes.append(nom)
+        survol.append(
+            f'<b>{nom}</b><br>{nombre(articles_personnes[nom])} articles'
+            + (f'<br><br>Principaux voisins :<br>{voisins_texte}' if voisins_texte else '')
+        )
+
+    fig.add_trace(go.Scatter(
+        x=[position[nom][0] for nom in principaux],
+        y=[position[nom][1] for nom in principaux],
+        mode='markers+text',
+        text=textes,
+        textposition='top center',
+        textfont=dict(size=11, color=theme.INK),
+        marker=dict(
+            size=tailles,
+            color=[couleur_par_personne[nom] for nom in principaux],
+            line=dict(width=1, color='rgba(255,255,255,0.9)'),
+        ),
+        customdata=survol,
+        hovertemplate='%{customdata}<extra></extra>',
+    ))
+
+    fig.update_layout(
+        height=620,
+        margin=dict(l=12, r=12, t=12, b=12),
+        hovermode='closest',
+        dragmode='pan',
+        showlegend=False,
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+        annotations=[dict(
+            text=f'Seuil de co-occurrence : {seuil} article{"s" if seuil > 1 else ""}',
+            x=0,
+            y=1,
+            xref='paper',
+            yref='paper',
+            xanchor='left',
+            yanchor='bottom',
+            showarrow=False,
+            font=dict(size=12, color=theme.MUTED),
+        )],
     )
     return fig
 
@@ -222,6 +341,21 @@ def carte(titre, question, ticket, large):
             ]),
             dcc.Graph(id='evolution-graphique', config={'displayModeBar': False}),
         ])
+    if ticket == 6:
+        return html.Div(className='panel wide', children=[
+            html.H2(titre),
+            html.P(question, className='question'),
+            dcc.Graph(
+                id='reseau-personnes',
+                config={
+                    'scrollZoom': True,
+                    'doubleClick': 'reset',
+                    'displayModeBar': True,
+                    'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
+                    'toImageButtonOptions': {'format': 'png', 'filename': 'reseau-personnes', 'scale': 2},
+                },
+            ),
+        ])
     return html.Div(className='panel wide' if large else 'panel', children=[
         html.H2(titre),
         html.P(question, className='question'),
@@ -315,6 +449,14 @@ def indicateurs(periode):
 )
 def mettre_a_jour_evolution(periode, selection):
     return evolution_termes(periode, selection)
+
+
+@app.callback(
+    Output('reseau-personnes', 'figure'),
+    Input('periode', 'data'),
+)
+def mettre_a_jour_reseau(periode):
+    return reseau_personnes(periode)
 
 
 @app.callback(
