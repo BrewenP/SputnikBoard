@@ -1,11 +1,13 @@
 import math
 from collections import Counter
 
+import pandas as pd
 import plotly.graph_objects as go
 from dash import Dash, Input, Output, ctx, dcc, html
 
 import theme
 from donnees import AFRICA, COUNTRIES, NAME, articles, proportion, surrepresentation
+from themes import themes
 
 ISSUES = 'https://github.com/BrewenP/SputnikBoard/issues/'
 
@@ -24,15 +26,16 @@ ONGLETS = {
         ('Réseau des personnes', 'Qui est cité avec qui ?', 6, True),
     ]),
     'themes': ('Thèmes', [
-        ('Carte des articles', 'Quels grands thèmes structurent le corpus ?', 8, False),
-        ('Évolution des thèmes', 'Quelle place prend chaque thème au fil des mois ?', 8, False),
+        ('Carte des articles', 'Quels grands thèmes structurent le corpus ?', 8, True),
+        ('Évolution des thèmes', 'Quelle place prend chaque thème au fil des mois ?', 8, True),
     ]),
     'france-russie': ('France / Russie', [
         ('Discours comparés', 'Avec quels mots parle-t-on de la France et de la Russie ?', 9, True),
     ]),
 }
 
-df = articles('fr')
+THEMES = themes('fr')
+df = articles('fr').assign(theme=THEMES['theme'])
 macron, poutine = articles('macron'), articles('poutine')
 MOIS = sorted(df['mois'].unique())
 COURTS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
@@ -216,6 +219,8 @@ CONTENUS = {
         ),
         dcc.Graph(id='discours-graphique', config={'displayModeBar': False}),
     ],
+    'Carte des articles': [dcc.Graph(id='themes-carte', config={'displayModeBar': False})],
+    'Évolution des thèmes': [dcc.Graph(id='themes-evolution', config={'displayModeBar': False})],
 }
 
 
@@ -223,10 +228,10 @@ def carte(titre, question, ticket, large):
     return html.Div(className='panel wide' if large else 'panel', children=[
         html.H2(titre),
         html.P(question, className='question'),
-        *CONTENUS.get(ticket, [html.Div(className='placeholder', children=[
+        *CONTENUS.get(titre, CONTENUS.get(ticket, [html.Div(className='placeholder', children=[
             html.Span('Graphique à venir'),
             html.A(f'Ticket #{ticket}', href=f'{ISSUES}{ticket}', target='_blank'),
-        ])]),
+        ])])),
     ])
 
 
@@ -314,6 +319,62 @@ def comparer_discours(periode, mode):
 @app.callback(Output('carte-graphique', 'figure'), Input('periode', 'data'), Input('carte-vue', 'value'))
 def cartographier(periode, vue):
     return carte_pays(periode, vue)
+
+
+def nom_theme(t):
+    return THEMES['noms'][t].capitalize()
+
+
+def note_themes():
+    s, k = THEMES['silhouettes'], THEMES['k']
+    if k == max(s):
+        raison = f'la silhouette croît avec le nombre de thèmes, plafonné à {k} pour garder des couleurs distinctes'
+    else:
+        raison = f'meilleure silhouette entre {min(s)} et {max(s)} thèmes'
+    return f"{k} thèmes : {raison} (silhouette {s[k]:.2f})".replace('.', ',')
+
+
+@app.callback(Output('themes-carte', 'figure'), Input('periode', 'data'))
+def carte_themes(periode):
+    dans = df['mois'].between(*periode).to_numpy()
+    fig = go.Figure(go.Scattergl(
+        x=THEMES['x'][~dans], y=THEMES['y'][~dans], mode='markers', name='Hors période',
+        marker=dict(color=theme.GRID, size=4), hoverinfo='skip', showlegend=False,
+    ))
+    for t in range(THEMES['k']):
+        choix = dans & (df['theme'] == t).to_numpy()
+        sel = df[choix]
+        fig.add_trace(go.Scattergl(
+            x=THEMES['x'][choix], y=THEMES['y'][choix], mode='markers', name=nom_theme(t),
+            marker=dict(color=theme.SERIES[t], size=4, opacity=0.7),
+            customdata=list(zip(sel['titre'], sel['date'].dt.strftime('%d/%m/%Y'))),
+            hovertemplate=f'<b>%{{customdata[0]}}</b><br>%{{customdata[1]}}<br>Thème : {nom_theme(t)}<extra></extra>',
+        ))
+    fig.update_layout(
+        height=560, legend=dict(orientation='v', x=1.02, y=1, yanchor='top', traceorder='normal', itemsizing='constant'),
+        xaxis=dict(visible=False), yaxis=dict(visible=False, scaleanchor='x'),
+        annotations=[dict(text=note_themes(), xref='paper', yref='paper', x=0, y=0, showarrow=False,
+                          xanchor='left', yanchor='bottom', font=dict(size=11, color=theme.MUTED))],
+    )
+    return fig
+
+
+@app.callback(Output('themes-evolution', 'figure'), Input('periode', 'data'))
+def evolution_themes(periode):
+    sel = filtrer(periode)
+    parts = pd.crosstab(sel['mois'], sel['theme'], normalize='index').reindex(columns=range(THEMES['k']), fill_value=0)
+    x = [libelle(m) for m in parts.index]
+    fig = go.Figure()
+    for t in parts.columns:
+        fig.add_trace(go.Scatter(
+            x=x, y=parts[t], name=nom_theme(t), stackgroup='un', mode='lines',
+            line=dict(width=0.5, color=theme.SERIES[t]),
+            hovertemplate=f'{nom_theme(t)} : <b>%{{y:.0%}}</b><extra></extra>',
+        ))
+    fig.update_layout(height=420, legend=dict(orientation='v', x=1.02, y=1, yanchor='top', traceorder='reversed', itemsizing='constant'),
+                      xaxis=dict(tickmode='array', tickvals=x[::3], tickangle=0),
+                      yaxis=dict(tickformat='.0%', range=[0, 1]), hovermode='x unified')
+    return fig
 
 
 if __name__ == '__main__':

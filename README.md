@@ -11,6 +11,8 @@ Projet DATA732 : visualisation avec Plotly d'un corpus d'articles de presse en l
 - `donnees.py` : chargement et nettoyage des corpus, commun à tous les graphiques
   - `articles(nom)` : tableau des articles (titre, date, mois, semaine, mots clés, personnes, pays), mis en cache
   - `proportion(df, colonne, termes, par)` : part des articles mentionnant chaque terme, par mois ou par semaine
+- `themes.py` : regroupement des articles par thème (TF-IDF, k-means, t-SNE) pour l'onglet Thèmes
+  - `themes(nom)` : thème et position sur la carte de chaque article, noms des thèmes et scores de silhouette. Le calcul (moins d'une minute) est fait au premier lancement puis enregistré dans `data/cache/`
 - `premiers_graphiques/` : premiers graphiques du sujet
   - `premiers_graphiques.py` : articles par mois (export HTML) et top 10 des mots clés
   - `dash_mots_cles.py` : application Dash, top 10 des mots clés par année

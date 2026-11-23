@@ -27,7 +27,9 @@ STOP = {
     'image', 'viral', 'vidéo', 'événement', 'annoncer', 'rapporter', 'lieu', 'principal', 'viser', 'vladimir',
     'affaire', 'étranger', 'devenir', 'passer', 'mener', 'créer', 'prévoir', 'utiliser', 'appeler', 'lancer',
     'générer', 'ia', 'face', 'clé', 'local', 'spécial', 'renforcer', 'soutenir', 'service', 'site', 'centre',
+    'interactif', 'emplacement', 'consulter', 'infographie', 'sputnikinfographie', 'sputnikinfographi',
 }
+LEMMES = {'gazer': 'gaza'}
 NOT_PERSON = {
     'washington', 'victoire', 'burkinab', 'sputnik', 'sputnikradio', 'afrique', 'kremlin', 'moscou', 'kiev',
     'guin', 'fran', 'faso', 'ivoire', 'premier', 'ministre', 'castbox', 'bloomberg', 'rosatom', 'sergue', 'gate',
@@ -89,6 +91,15 @@ def person(name):
     return ALIASES.get(last, last) if ok else None
 
 
+def mots(kws):
+    res = Counter()
+    for w, n in kws.items():
+        w = LEMMES.get(w, w)
+        if w not in STOP and len(w) > 2:
+            res[w] += n
+    return dict(res)
+
+
 @cache
 def articles(name='fr'):
     rows = [a for y in load(name)['data'].values() for m in y.values() for d in m.values() for a in d]
@@ -96,7 +107,7 @@ def articles(name='fr'):
     df = pd.DataFrame({'titre': raw['title'], 'date': pd.to_datetime(raw['date'])})
     df['mois'] = df['date'].dt.strftime('%Y-%m')
     df['semaine'] = df['date'].dt.to_period('W').dt.start_time
-    df['mots'] = raw['kws'].map(lambda k: {w: n for w, n in k.items() if w not in STOP and len(w) > 2})
+    df['mots'] = raw['kws'].map(mots)
     df['personnes'] = raw['per'].map(lambda p: {person(n) for n in p} - {None})
     df['pays'] = raw['loc'].map(countries)
     return df.sort_values('date', ignore_index=True)
