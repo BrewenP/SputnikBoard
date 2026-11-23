@@ -7,7 +7,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.colors import sample_colorscale
 import prince
-from dash import Dash, Input, Output, ctx, dcc, html
+from dash import Dash, Input, Output, State, ctx, dcc, html, no_update
 
 import theme
 from donnees import AFRICA, COUNTRIES, NAME, articles, emergence, proportion, surrepresentation
@@ -102,8 +102,10 @@ RESEAU_PERSONNES = 35  # personnes les plus citées de la période
 RESEAU_LIENS = 75  # nombre maximal de liens affichés
 
 
-def reseau_personnes(periode):
+def reseau_personnes(periode, pays=None):
     sel = filtrer(periode)
+    if pays:
+        sel = sel[sel['pays'].map(lambda s: pays in s)]
     citations = Counter(p for personnes in sel['personnes'] for p in personnes)
     principaux = {nom for nom, _ in citations.most_common(RESEAU_PERSONNES)}
     cooccurrences = Counter()
@@ -119,7 +121,8 @@ def reseau_personnes(periode):
     fig = go.Figure()
     fig.update_layout(height=640, xaxis=dict(visible=False), yaxis=dict(visible=False), hovermode='closest')
     if graphe.number_of_edges() == 0:
-        fig.add_annotation(text='Pas assez de personnes citées ensemble sur cette période', showarrow=False,
+        precision = f'dans les articles sur {NAME[pays]}' if pays else 'sur cette période'
+        fig.add_annotation(text=f'Pas assez de personnes citées ensemble {precision}', showarrow=False,
                            font=dict(color=theme.MUTED))
         return fig
 
@@ -463,6 +466,14 @@ def mots_emergents(periode):
     return fig
 
 
+def bandeau(nom, actions):
+    """Bandeau masqué par défaut : un texte et des boutons, d'identifiants `nom`-texte et `nom`-<action>."""
+    return html.Div(id=nom, className='filtre', hidden=True, children=[
+        html.Span(id=f'{nom}-texte'),
+        *[html.Button(texte, id=f'{nom}-{action}', className='filtre-bouton', n_clicks=0) for action, texte in actions],
+    ])
+
+
 CONTENUS = {
     3: [
         html.Div(className='termes-controles', children=[
@@ -483,9 +494,17 @@ CONTENUS = {
             id='carte-vue', value='afrique', inline=True, className='bascule',
             options=[{'label': nom, 'value': vue} for vue, nom in VUES.items()],
         ),
+        html.P('Cliquer sur un pays pour filtrer le réseau des personnes.', className='astuce'),
+        bandeau('carte-filtre', [('voir', 'Voir le réseau'), ('retirer', 'Retirer')]),
         dcc.Graph(id='carte-graphique', config={'displayModeBar': False}),
     ],
-    6: [dcc.Graph(id='reseau-personnes', config={'displayModeBar': False})],
+    6: [
+        html.P('Cliquer sur une personne pour suivre son évolution, sur un pays de la carte pour filtrer le réseau.',
+               className='astuce'),
+        bandeau('reseau-filtre', [('retirer', 'Retirer le filtre')]),
+        bandeau('reseau-ajout', [('voir', "Voir l'évolution")]),
+        dcc.Graph(id='reseau-personnes', config={'displayModeBar': False}),
+    ],
     7: [dcc.Graph(id='afc-graphique', config={'displayModeBar': False})],
     9: [
         dcc.RadioItems(
@@ -540,6 +559,7 @@ app.layout = html.Div([
     ])),
     html.Main(className='page', children=[
         dcc.Store(id='periode'),
+        dcc.Store(id='filtre-pays'),
         html.Div(id='indicateurs', className='overview'),
         dcc.Tabs(id='onglet', value='evolution', className='tabs', mobile_breakpoint=0, children=[
             dcc.Tab(label=label, value=key, className='tab', selected_className='tab--selected', children=[
@@ -598,18 +618,71 @@ def mettre_a_jour_evolution(periode, selection):
 @app.callback(
     Output('reseau-personnes', 'figure'),
     Input('periode', 'data'),
+    Input('filtre-pays', 'data'),
 )
-def mettre_a_jour_reseau(periode):
-    return reseau_personnes(periode)
+def mettre_a_jour_reseau(periode, pays):
+    return reseau_personnes(periode, pays)
+
+
+@app.callback(
+    Output('filtre-pays', 'data'),
+    Output('carte-graphique', 'clickData'),
+    Input('carte-graphique', 'clickData'),
+    Input('carte-filtre-retirer', 'n_clicks'),
+    Input('reseau-filtre-retirer', 'n_clicks'),
+    prevent_initial_call=True,
+)
+def choisir_pays(clic, *_):
+    if ctx.triggered_id == 'carte-graphique':
+        return (clic['points'][0]['location'], no_update) if clic else (no_update, no_update)
+    return None, None  # clickData remis à zéro pour qu'un nouveau clic sur le même pays soit pris en compte
+
+
+@app.callback(
+    Output('carte-filtre', 'hidden'), Output('carte-filtre-texte', 'children'),
+    Output('reseau-filtre', 'hidden'), Output('reseau-filtre-texte', 'children'),
+    Input('filtre-pays', 'data'),
+)
+def afficher_filtre(pays):
+    if not pays:
+        return True, '', True, ''
+    return False, ['Réseau filtré sur : ', html.B(NAME[pays])], False, ['Filtré sur : ', html.B(NAME[pays])]
 
 
 @app.callback(
     Output('termes-evolution', 'value'),
+    Output('termes-evolution', 'options'),
+    Output('reseau-ajout', 'hidden'),
+    Output('reseau-ajout-texte', 'children'),
+    Output('reseau-personnes', 'clickData'),
     Input('tout-deselectionner', 'n_clicks'),
+    Input('reseau-personnes', 'clickData'),
+    State('termes-evolution', 'value'),
+    State('termes-evolution', 'options'),
     prevent_initial_call=True,
 )
-def deselectionner_tous_les_termes(_):
-    return []
+def choisir_termes(_, clic, valeur, options):
+    if ctx.triggered_id == 'tout-deselectionner':
+        return [], no_update, True, '', no_update
+    nom = clic and clic['points'][0].get('text')
+    if not nom:
+        return no_update, no_update, no_update, no_update, no_update
+    terme = f'personnes|{nom}'
+    if terme not in [o['value'] for o in options]:
+        options = options + [{'label': f'{nom} (personne)', 'value': terme}]
+    if terme not in valeur:
+        valeur = valeur + [terme]
+    return valeur, options, False, [html.B(nom), " ajouté au graphique d'évolution"], None
+
+
+@app.callback(
+    Output('onglet', 'value'),
+    Input('carte-filtre-voir', 'n_clicks'),
+    Input('reseau-ajout-voir', 'n_clicks'),
+    prevent_initial_call=True,
+)
+def changer_onglet(*_):
+    return 'acteurs' if ctx.triggered_id == 'carte-filtre-voir' else 'evolution'
 
 
 AFC_FREQUENTS = 200  # mots clés les plus fréquents de la période, gardés pour le tableau de contingence
