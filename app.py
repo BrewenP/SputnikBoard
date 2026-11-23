@@ -17,7 +17,7 @@ ISSUES = 'https://github.com/BrewenP/SputnikBoard/issues/'
 
 ONGLETS = {
     'evolution': ('Évolution', [
-        ('Évolution de termes dans le temps', "Quels sujets et quels acteurs dominent l'actualité, mois après mois ?", 3, True),
+        ('Évolution des personnes citées', "Quels acteurs dominent l'actualité, mois après mois ?", 3, True),
     ]),
     'vocabulaire': ('Vocabulaire', [
         ('Mots émergents', 'Quels mots surgissent puis disparaissent ?', 4, True),
@@ -185,27 +185,13 @@ def ajouter_noeuds(fig, graphe, position, citations, citations_max, noms, nom_gr
     ))
 
 
+EVOLUTION_PERSONNES = 20  # personnes les plus citées du corpus, proposées dans la liste
 EVOLUTION_TERME_OPTIONS = [
-    {'label': 'Poutine (personne)', 'value': 'personnes|Poutine'},
-    {'label': 'Trump (personne)', 'value': 'personnes|Trump'},
-    {'label': 'Zelensky (personne)', 'value': 'personnes|Zelensky'},
-    {'label': 'Macron (personne)', 'value': 'personnes|Macron'},
-    {'label': 'Lavrov (personne)', 'value': 'personnes|Lavrov'},
-    {'label': 'Russie (mot-clé)', 'value': 'mots|russie'},
-    {'label': 'Ukraine (mot-clé)', 'value': 'mots|ukraine'},
-    {'label': 'Afrique (mot-clé)', 'value': 'mots|afrique'},
-    {'label': 'Trump (mot-clé)', 'value': 'mots|trump'},
-    {'label': 'Poutine (mot-clé)', 'value': 'mots|poutine'},
-    {'label': 'militaire (mot-clé)', 'value': 'mots|militaire'},
-    {'label': 'gaza (mot-clé)', 'value': 'mots|gaza'},
+    {'label': nom, 'value': f'personnes|{nom}'}
+    for nom, _ in Counter(p for s in df['personnes'] for p in s).most_common(EVOLUTION_PERSONNES)
 ]
 
-EVOLUTION_TERME_DEFAUT = [
-    'personnes|Poutine',
-    'personnes|Trump',
-    'mots|russie',
-    'mots|ukraine',
-]
+EVOLUTION_TERME_DEFAUT = ['personnes|Poutine', 'personnes|Trump', 'personnes|Zelensky', 'personnes|Macron']
 
 EVENEMENTS = [
     ('2025-02', 'Début des pourparlers Russie-États-Unis à Riyad'),
@@ -235,7 +221,7 @@ def evolution_termes(periode, selection):
                 title='Part des articles',
             ),
             annotations=[dict(
-                text='Sélectionnez au moins un terme',
+                text='Sélectionnez au moins une personne',
                 xref='paper',
                 yref='paper',
                 x=0.5,
@@ -251,7 +237,7 @@ def evolution_termes(periode, selection):
         colonne, terme = valeur.split('|', 1)
         serie = proportion(sel, colonne, [terme], par='mois').reindex(mois_selectionnes)
         label = next(
-            (o['label'].replace(' (personne)', '').replace(' (mot-clé)', '')
+            (o['label']
              for o in EVOLUTION_TERME_OPTIONS if o['value'] == valeur),
             terme,
         )
@@ -263,7 +249,7 @@ def evolution_termes(periode, selection):
             name=label,
             customdata=[libelle(m, LONGS) for m in mois_selectionnes],
             text=[label] * len(mois_selectionnes),
-            hovertemplate='<b>%{customdata}</b><br>Terme : %{text}<br>Part : %{y:.1%}<extra></extra>',
+            hovertemplate='<b>%{customdata}</b><br>%{text} : cité dans %{y:.1%} des articles<extra></extra>',
         ))
 
     for mois, texte in EVENEMENTS:
@@ -477,11 +463,11 @@ def bandeau(nom, actions):
 CONTENUS = {
     3: [
         html.Div(className='termes-controles', children=[
-            html.Div('Termes affichés', className='label'),
+            html.Div('Personnes affichées', className='label'),
             html.Div(className='termes-selection', children=[
                 dcc.Dropdown(
                     id='termes-evolution', options=EVOLUTION_TERME_OPTIONS, value=EVOLUTION_TERME_DEFAUT,
-                    multi=True, clearable=False, placeholder='Sélectionner des termes',
+                    multi=True, clearable=False, placeholder='Sélectionner des personnes',
                 ),
                 html.Button('Tout désélectionner', id='tout-deselectionner', className='termes-clear', n_clicks=0),
             ]),
@@ -669,7 +655,7 @@ def choisir_termes(_, clic, valeur, options):
         return no_update, no_update, no_update, no_update, no_update
     terme = f'personnes|{nom}'
     if terme not in [o['value'] for o in options]:
-        options = options + [{'label': f'{nom} (personne)', 'value': terme}]
+        options = options + [{'label': nom, 'value': terme}]
     if terme not in valeur:
         valeur = valeur + [terme]
     return valeur, options, False, [html.B(nom), " ajouté au graphique d'évolution"], None
