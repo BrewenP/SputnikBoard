@@ -5,11 +5,12 @@ from itertools import combinations
 import networkx as nx
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.colors import sample_colorscale
 import prince
 from dash import Dash, Input, Output, ctx, dcc, html
 
 import theme
-from donnees import AFRICA, COUNTRIES, NAME, articles, proportion, surrepresentation
+from donnees import AFRICA, COUNTRIES, NAME, articles, emergence, proportion, surrepresentation
 from themes import themes
 
 ISSUES = 'https://github.com/BrewenP/SputnikBoard/issues/'
@@ -403,6 +404,65 @@ def carte_pays(periode, vue):
     return fig
 
 
+EMERGENTS = 28  # mots affichés sur la heatmap des mots émergents
+EMERGENTS_FREQUENCE_MIN = 0.005  # un mot doit être dans au moins 0,5 % des articles en moyenne par mois
+EMERGENTS_ARTICLES_MIN = 5  # et dans au moins 5 articles lors de son mois de pic
+EMERGENTS_SCORE_MAX = 5  # au-delà, la couleur ne change plus (sinon un seul pic écrase tout le reste)
+EMERGENTS_HAUTEUR = 700
+
+
+def mots_emergents(periode):
+    mois = [m for m in MOIS if periode[0] <= m <= periode[1]]
+    fig = go.Figure()
+    fig.update_layout(height=EMERGENTS_HAUTEUR)
+    if len(mois) < 3:
+        fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), annotations=[dict(
+            text='Choisir au moins 3 mois pour repérer les mots émergents.', showarrow=False,
+            xref='paper', yref='paper', x=0.5, y=0.5, font=dict(color=theme.MUTED))])
+        return fig
+
+    score, freq, comptes = emergence(filtrer(periode), mois, EMERGENTS, EMERGENTS_FREQUENCE_MIN, EMERGENTS_ARTICLES_MIN)
+    mots, z = list(score.index), score.to_numpy()
+    borne = min(EMERGENTS_SCORE_MAX, float(z.max()))  # sur n mois, un score ne dépasse pas racine(n - 1)
+    teintes = sample_colorscale(theme.DIVERGING_SIGNAL, ((z.clip(-borne, borne) + borne) / (2 * borne)).ravel())
+
+    # Cases arrondies façon calendrier : un rectangle par case, en unités d'axe. Plotly ne connaît pas la taille
+    # en pixels du graphique, on l'estime pour obtenir des écarts et des arrondis d'environ 3 pixels.
+    largeur, hauteur = 1100 / len(mois), (EMERGENTS_HAUTEUR - 90) / len(mots)
+    gx, gy, rx, ry = 1.5 / largeur, 1.5 / hauteur, 4 / largeur, 4 / hauteur
+    cases = []
+    for k, teinte in enumerate(teintes):
+        i, j = divmod(k, len(mois))
+        x0, x1, y0, y1 = j - 0.5 + gx, j + 0.5 - gx, i - 0.5 + gy, i + 0.5 - gy
+        cases.append(dict(
+            type='path', layer='below', fillcolor=teinte, line_width=0,
+            path=f'M{x0 + rx},{y0} L{x1 - rx},{y0} Q{x1},{y0} {x1},{y0 + ry} L{x1},{y1 - ry} Q{x1},{y1} {x1 - rx},{y1} '
+                 f'L{x0 + rx},{y1} Q{x0},{y1} {x0},{y1 - ry} L{x0},{y0 + ry} Q{x0},{y0} {x0 + rx},{y0} Z',
+        ))
+
+    # Heatmap transparente posée sur les cases : elle porte l'infobulle et la légende des couleurs.
+    fig.add_trace(go.Heatmap(
+        z=z, zmin=-borne, zmax=borne, zmid=0, colorscale=theme.DIVERGING_SIGNAL, opacity=0,
+        colorbar=dict(title='Score (z)', thickness=10, len=0.6, outlinewidth=0),
+        customdata=[[(w, libelle(m, LONGS), part(freq.loc[w, m]), nombre(comptes.loc[w, m])) for m in mois] for w in mots],
+        hovertemplate='<b>%{customdata[0]}</b><br>%{customdata[1]}<br>Score : <b>%{z:+.1f}</b><br>'
+                      'Fréquence : %{customdata[2]} des articles (%{customdata[3]} articles)<extra></extra>',
+    ))
+    graduations = list(range(len(mois)))[::3 if len(mois) > 12 else 1]
+    fig.update_layout(
+        height=EMERGENTS_HAUTEUR, shapes=cases,
+        xaxis=dict(tickmode='array', tickvals=graduations, ticktext=[libelle(mois[j]) for j in graduations],
+                   range=[-0.5, len(mois) - 0.5], side='top', showgrid=False, showline=False, zeroline=False),
+        yaxis=dict(tickmode='array', tickvals=list(range(len(mots))), ticktext=mots, range=[len(mots) - 0.5, -0.5],
+                   showgrid=False, showline=False, zeroline=False),
+        annotations=[dict(
+            text="Score = écart de la fréquence du mois à la moyenne du mot, en écarts-types. Mots triés par mois de pic.",
+            xref='paper', yref='paper', x=0, y=0, yshift=-6, yanchor='top', showarrow=False,
+            font=dict(size=11, color=theme.MUTED))],
+    )
+    return fig
+
+
 CONTENUS = {
     3: [
         html.Div(className='termes-controles', children=[
@@ -417,6 +477,7 @@ CONTENUS = {
         ]),
         dcc.Graph(id='evolution-graphique', config={'displayModeBar': False}),
     ],
+    4: [dcc.Graph(id='emergents-graphique', config={'displayModeBar': False})],
     5: [
         dcc.RadioItems(
             id='carte-vue', value='afrique', inline=True, className='bascule',
@@ -565,6 +626,11 @@ def sans_chevauchement(points, ecart=(0.08, 0.05)):
         if libre:
             places.append((x, y))
     return visibles
+
+
+@app.callback(Output('emergents-graphique', 'figure'), Input('periode', 'data'))
+def mettre_a_jour_emergents(periode):
+    return mots_emergents(periode)
 
 
 @app.callback(Output('afc-graphique', 'figure'), Input('periode', 'data'))

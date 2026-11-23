@@ -142,6 +142,7 @@ Avant d'ouvrir une pull request, fusionner `main` dans sa branche et vérifier q
   - `SERIES` pour des catégories, dans l'ordre et sans sauter de couleur. Une même entité garde toujours la même couleur, quel que soit le filtre.
   - `SEQUENTIAL` (bleu, du clair au foncé) pour une intensité, par exemple sur une carte.
   - `DIVERGING` (bleu, gris, rouge) pour une opposition autour d'un point neutre, par exemple France contre Russie.
+  - `DIVERGING_SIGNAL` (bleu, gris, orange Sputnik) pour un écart à la normale où seul le côté positif compte, par exemple les mots émergents.
 - **Pas de double axe vertical.** Deux mesures d'échelles différentes vont dans deux graphiques.
 - **Textes en français**, y compris les infobulles (`hovertemplate`), avec des noms de mois via `libelle()`.
 - **Graphiques dans le temps en proportions** (voir la rupture de collecte plus haut), avec `proportion()` de `donnees.py`.

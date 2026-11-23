@@ -149,3 +149,31 @@ def surrepresentation(a, b, colonne, minimum=20, lissage=0.5):
         lignes.append((terme, fa, fb, math.log(cote_a / cote_b)))
     return pd.DataFrame(lignes, columns=['terme', 'freq_a', 'freq_b', 'score']).sort_values(
         ['score', 'terme'], ascending=[False, True], ignore_index=True)
+
+
+def emergence(df, mois, n=28, freq_min=0.005, articles_min=5):
+    """Mots les plus « émergents » : ceux dont la fréquence relative un mois donné s'écarte le plus de leur moyenne.
+
+    La fréquence d'un mot un mois donné est la part des articles du mois qui le contiennent (et non un nombre
+    brut, qui suivrait le volume de la collecte). Le score est le z-score de cette fréquence sur les `mois` :
+    (fréquence du mois - moyenne des mois) / écart-type des mois.
+    Sont écartés les mots dont la fréquence moyenne est inférieure à `freq_min` et ceux qui sont présents dans
+    moins de `articles_min` articles lors de leur mois de pic : dans les petits mois de 2024 (50 à 100 articles),
+    deux articles suffisent sinon à faire un pic.
+    On garde les `n` mots au score maximal le plus élevé, triés par mois de pic (puis par score décroissant).
+
+    Renvoie trois tableaux de même forme (un mot par ligne, un mois par colonne) : `score`, `freq` (part des
+    articles) et `nombre` (nombre d'articles).
+    """
+    paires = pd.DataFrame([(m, w) for m, mots in zip(df['mois'], df['mots']) for w in mots], columns=['mois', 'mot'])
+    nombre = pd.crosstab(paires['mot'], paires['mois']).reindex(columns=mois, fill_value=0)
+    total = df['mois'].value_counts().reindex(mois)
+    freq = nombre / total
+    au_pic = nombre.where(freq.eq(freq.max(axis=1), axis=0)).max(axis=1)
+    garde = (freq.mean(axis=1) >= freq_min) & (au_pic >= articles_min)
+    nombre, freq = nombre[garde], freq[garde]
+    ecart = freq.std(axis=1, ddof=0)
+    score = freq.sub(freq.mean(axis=1), axis=0).div(ecart.where(ecart > 0), axis=0).dropna()
+    retenus = score.max(axis=1).nlargest(n).index
+    ordre = sorted(retenus, key=lambda w: (score.loc[w].to_numpy().argmax(), -score.loc[w].max(), w))
+    return score.loc[ordre], freq.loc[ordre], nombre.loc[ordre]
