@@ -1,6 +1,8 @@
 from collections import Counter
 
+import pandas as pd
 import plotly.graph_objects as go
+import prince
 from dash import Dash, Input, Output, ctx, dcc, html
 
 import theme
@@ -14,7 +16,7 @@ ONGLETS = {
     ]),
     'vocabulaire': ('Vocabulaire', [
         ('Mots émergents', 'Quels mots surgissent puis disparaissent ?', 4, False),
-        ('Analyse des correspondances', 'Comment le vocabulaire distingue-t-il les périodes ?', 7, False),
+        ('Analyse des correspondances', 'Comment le vocabulaire distingue-t-il les périodes ?', 7, True, 'afc-graphique'),
     ]),
     'carte': ('Carte', [
         ('Pays cités', 'Quelles régions le média couvre-t-il, et à quel moment ?', 5, True),
@@ -89,14 +91,16 @@ def volume(periode):
     return fig
 
 
-def carte(titre, question, ticket, large):
+def carte(titre, question, ticket, large, graphe=None):
+    contenu = dcc.Graph(id=graphe, config={'displayModeBar': False}) if graphe else html.Div(
+        className='placeholder', children=[
+            html.Span('Graphique à venir'),
+            html.A(f'Ticket #{ticket}', href=f'{ISSUES}{ticket}', target='_blank'),
+        ])
     return html.Div(className='panel wide' if large else 'panel', children=[
         html.H2(titre),
         html.P(question, className='question'),
-        html.Div(className='placeholder', children=[
-            html.Span('Graphique à venir'),
-            html.A(f'Ticket #{ticket}', href=f'{ISSUES}{ticket}', target='_blank'),
-        ]),
+        contenu,
     ])
 
 
@@ -174,6 +178,60 @@ def indicateurs(periode):
             dcc.Graph(figure=volume(periode), config={'displayModeBar': False}),
         ]),
     ]
+
+
+AFC_FREQUENTS = 200  # mots clés les plus fréquents de la période, gardés pour le tableau de contingence
+AFC_AFFICHES = 30  # mots qui contribuent le plus aux deux axes, affichés sur le graphique
+
+
+@app.callback(Output('afc-graphique', 'figure'), Input('periode', 'data'))
+def afc(periode):
+    sel = filtrer(periode)
+    fig = go.Figure()
+    fig.update_layout(height=600)
+    if sel['mois'].nunique() < 3:
+        fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), annotations=[dict(
+            text="Choisir au moins 3 mois pour l'analyse des correspondances.", showarrow=False,
+            xref='paper', yref='paper', x=0.5, y=0.5, font=dict(color=theme.MUTED))])
+        return fig
+
+    # Tableau de contingence : nombre d'articles de chaque mois qui contiennent chaque mot clé fréquent.
+    paires = pd.DataFrame([(m, w) for m, mots in zip(sel['mois'], sel['mots']) for w in mots], columns=['mois', 'mot'])
+    frequents = paires['mot'].value_counts().index[:AFC_FREQUENTS]
+    paires = paires[paires['mot'].isin(frequents)]
+    tableau = pd.crosstab(paires['mot'], paires['mois'])
+
+    ca = prince.CA(n_components=2, random_state=0).fit(tableau)
+    mots, mois = ca.row_coordinates(tableau), ca.column_coordinates(tableau)
+    # Carte asymétrique : les mois en coordonnées standard (divisées par la racine de la valeur propre)
+    # s'écartent du centre, et chaque mot se place au barycentre des mois où il apparaît le plus.
+    mois = mois / ca.eigenvalues_ ** 0.5
+    inertie = ca.percentage_of_variance_
+    # Mots les plus variables dans le temps : ceux qui contribuent le plus à la construction des deux axes.
+    contribution = ca.row_contributions_[0] * inertie[0] + ca.row_contributions_[1] * inertie[1]
+    mots = mots.loc[contribution.nlargest(AFC_AFFICHES).index]
+    # Les mots trop proches du centre se chevauchent : ils gardent leur point, avec le nom au survol seulement.
+    distance = (mots[0] ** 2 + mots[1] ** 2) ** 0.5
+    etiquettes = [m if d >= distance.quantile(0.35) else '' for m, d in zip(mots.index, distance)]
+
+    fig.add_trace(go.Scatter(
+        x=mots[0], y=mots[1], mode='markers+text', name='Mots clés', text=etiquettes, textposition='top center',
+        marker=dict(color=theme.SERIES[1], size=6), textfont=dict(color=theme.SERIES[1], size=12),
+        customdata=list(zip(mots.index, tableau.loc[mots.index].sum(axis=1))),
+        hovertemplate='<b>%{customdata[0]}</b><br>dans %{customdata[1]} articles<extra></extra>',
+    ))
+    fig.add_trace(go.Scatter(
+        x=mois[0], y=mois[1], mode='lines+markers+text', name='Mois (dans l’ordre)',
+        text=[libelle(m) for m in mois.index], textposition='bottom center',
+        line=dict(color=theme.SERIES[0], width=1.5), marker=dict(color=theme.SERIES[0], size=8),
+        textfont=dict(color=theme.SERIES[0], size=11), customdata=[libelle(m, LONGS) for m in mois.index],
+        hovertemplate='<b>%{customdata}</b><extra></extra>',
+    ))
+    fig.update_layout(
+        xaxis=dict(title=f'Axe 1 ({pourcent(inertie[0] / 100)} de l’inertie)', zeroline=True, zerolinecolor=theme.AXIS),
+        yaxis=dict(title=f'Axe 2 ({pourcent(inertie[1] / 100)} de l’inertie)', zeroline=True, zerolinecolor=theme.AXIS),
+    )
+    return fig
 
 
 if __name__ == '__main__':
