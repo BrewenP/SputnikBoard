@@ -10,7 +10,7 @@ import prince
 from dash import Dash, Input, Output, State, ctx, dcc, html, no_update
 
 import theme
-from donnees import AFRICA, COUNTRIES, NAME, articles, emergence, proportion, surrepresentation
+from donnees import AFRICA, COUNTRIES, NAME, articles, compter, emergence, proportion, surrepresentation
 from themes import themes
 
 ISSUES = 'https://github.com/BrewenP/SputnikBoard/issues/'
@@ -288,9 +288,15 @@ MODES = {
     'mots': ('Mots clés', 'mots', 20, 'occurrences'),
     'personnes': ('Personnes', 'personnes', 8, 'articles'),
 }
+# Termes qui ont servi à constituer les deux corpus : forcément surreprésentés, ils n'apprennent rien.
+DEFINITOIRES = {
+    'mots': {'france', 'français', 'macron', 'emmanuel', 'russie', 'russe', 'poutine', 'vladimir'},
+    'personnes': {'Macron', 'Poutine'},
+}
 FRANCE = ('France / Macron', theme.DIVERGING[1])
 RUSSIE = ('Russie / Poutine', theme.DIVERGING[5])
 TOP = 15
+SEUIL_Z = 1.96
 
 
 def decimal(x, signe=False):
@@ -300,38 +306,51 @@ def decimal(x, signe=False):
 def discours(periode, mode):
     _, colonne, minimum, unite = MODES[mode]
     fr, ru = (d[d['mois'].between(*periode)] for d in (macron, poutine))
-    s = surrepresentation(ru, fr, colonne, minimum)  # score > 0 : côté Russie, score < 0 : côté France
-    cotes = {
-        FRANCE: s[s['score'] < 0].tail(TOP).iloc[::-1],
-        RUSSIE: s[s['score'] > 0].head(TOP),
+    communs = set(fr['titre']) & set(ru['titre'])  # articles présents dans les deux corpus, retirés des deux côtés
+    fr, ru = fr[~fr['titre'].isin(communs)], ru[~ru['titre'].isin(communs)]
+    s = surrepresentation(ru, fr, colonne, filtrer(periode), minimum, exclus=DEFINITOIRES[mode])
+    totaux = {FRANCE: sum(compter(fr[colonne]).values()) or 1, RUSSIE: sum(compter(ru[colonne]).values()) or 1}
+    cotes = {  # seuls les écarts significatifs au seuil de 5 % sont affichés
+        FRANCE: s[s['score'] < -SEUIL_Z].tail(TOP).iloc[::-1],
+        RUSSIE: s[s['score'] > SEUIL_Z].head(TOP),
     }
     fig = go.Figure()
     for (nom, couleur), d in cotes.items():
         fig.add_bar(
             x=d['score'], y=list(range(len(d))), orientation='h', name=nom, marker_color=couleur,
             text=d['terme'], textposition='outside', cliponaxis=False,
-            customdata=[(t, decimal(abs(sc)), f'{math.exp(abs(sc)):.1f}'.replace('.', ','), nombre(a), nombre(b))
+            customdata=[(t, decimal(abs(sc)), nombre(a), decimal(1000 * a / totaux[FRANCE]),
+                         nombre(b), decimal(1000 * b / totaux[RUSSIE]))
                         for t, sc, a, b in zip(d['terme'], d['score'], d['freq_b'], d['freq_a'])],
             hovertemplate=(
                 '<b>%{customdata[0]}</b><br>'
-                'Score : %{customdata[1]} (cote ×%{customdata[2]} par rapport à l\'autre corpus)<br>'
-                f'{FRANCE[0]} : %{{customdata[3]}} {unite}<br>'
-                f'{RUSSIE[0]} : %{{customdata[4]}} {unite}<extra></extra>'
+                'Score z : %{customdata[1]}<br>'
+                f'{FRANCE[0]} : %{{customdata[2]}} {unite} (%{{customdata[3]}} pour 1 000)<br>'
+                f'{RUSSIE[0]} : %{{customdata[4]}} {unite} (%{{customdata[5]}} pour 1 000)<extra></extra>'
             ),
         )
-    if s.empty:
-        fig.add_annotation(text='Pas assez de données sur cette période', showarrow=False, font=dict(color=theme.MUTED))
-    bord = max(s['score'].abs().max() if not s.empty else 1, 1)
-    graduations = list(range(-math.ceil(bord), math.ceil(bord) + 1))
+    bord = max(s['score'].abs().max() if not s.empty else 2, 2)
+    pas = 1 if bord < 6 else 2
+    graduations = list(range(-math.ceil(bord) // pas * pas, math.ceil(bord) + 1, pas))
     fig.add_vline(x=0, line_color=theme.AXIS)
+    for x in (-SEUIL_Z, SEUIL_Z):
+        fig.add_vline(x=x, line_color=theme.MUTED, line_dash='dot', line_width=1)
     fig.update_layout(
-        barmode='overlay', height=max(TOP, *(len(d) for d in cotes.values())) * 30 + 130,
+        barmode='overlay', height=max(TOP, *(len(d) for d in cotes.values())) * 30 + 150,
         xaxis=dict(
             range=[-bord * 1.35, bord * 1.35], tickvals=graduations, ticktext=[str(abs(g)) for g in graduations],
-            showgrid=True, title='Score de surreprésentation (logarithme du rapport de cotes)',
+            showgrid=True, title='Score de surreprésentation (score z, en pointillés le seuil de significativité de 5 %)',
         ),
         yaxis=dict(autorange='reversed', showticklabels=False, showgrid=False, showline=False),
+        annotations=[dict(
+            text=f'{nombre(len(communs))} articles communs aux deux corpus retirés. '
+                 f'Termes qui définissent les corpus exclus : {", ".join(sorted(DEFINITOIRES[mode]))}.',
+            xref='paper', yref='paper', x=0, y=0, yshift=-58, yanchor='top', showarrow=False,
+            font=dict(size=11, color=theme.MUTED))],
+        margin=dict(b=70),
     )
+    if all(d.empty for d in cotes.values()):
+        fig.add_annotation(text='Aucun écart significatif sur cette période', showarrow=False, font=dict(color=theme.MUTED))
     return fig
 
 
