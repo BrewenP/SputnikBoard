@@ -118,6 +118,15 @@ De haut en bas :
 
 Les onglets et leurs cartes sont décrits dans le dictionnaire `ONGLETS` de `app.py`. Une carte encore vide affiche un lien vers son ticket.
 
+### Filtrage croisé
+
+Certains graphiques réagissent aux clics sur d'autres, toujours en plus du filtre de période :
+
+- **Clic sur un pays de la carte** : le réseau des personnes est recalculé sur les seuls articles qui citent ce pays. Le pays choisi est gardé dans le `dcc.Store` `filtre-pays`.
+- **Clic sur une personne du réseau** : elle est ajoutée aux termes suivis du graphique d'évolution.
+
+Chaque filtre actif est signalé par un bandeau (fonction `bandeau()`) avec un bouton pour le retirer ou pour aller voir le graphique concerné. Un même composant ne peut être modifié que par un seul callback : pour réagir à un nouveau clic, ajouter une entrée au callback existant (`choisir_pays`, `choisir_termes`) plutôt qu'un nouveau callback sur la même sortie.
+
 ### Ajouter un graphique
 
 1. Écrire une fonction qui prend la période et renvoie une figure Plotly, en partant de `filtrer(periode)` qui donne les articles de la période.
