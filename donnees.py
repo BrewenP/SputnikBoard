@@ -157,8 +157,9 @@ def emergence(df, mois, n=28, freq_min=0.005, articles_min=5):
     La fréquence d'un mot un mois donné est la part des articles du mois qui le contiennent (et non un nombre
     brut, qui suivrait le volume de la collecte). Le score est le z-score de cette fréquence sur les `mois` :
     (fréquence du mois - moyenne des mois) / écart-type des mois.
-    Sont écartés les mots dont la fréquence moyenne est inférieure à `freq_min` et ceux qui ne sont jamais
-    présents dans au moins `articles_min` articles d'un même mois (un z-score sur quelques articles n'a pas de sens).
+    Sont écartés les mots dont la fréquence moyenne est inférieure à `freq_min` et ceux qui sont présents dans
+    moins de `articles_min` articles lors de leur mois de pic : dans les petits mois de 2024 (50 à 100 articles),
+    deux articles suffisent sinon à faire un pic.
     On garde les `n` mots au score maximal le plus élevé, triés par mois de pic (puis par score décroissant).
 
     Renvoie trois tableaux de même forme (un mot par ligne, un mois par colonne) : `score`, `freq` (part des
@@ -168,7 +169,8 @@ def emergence(df, mois, n=28, freq_min=0.005, articles_min=5):
     nombre = pd.crosstab(paires['mot'], paires['mois']).reindex(columns=mois, fill_value=0)
     total = df['mois'].value_counts().reindex(mois)
     freq = nombre / total
-    garde = (freq.mean(axis=1) >= freq_min) & (nombre.max(axis=1) >= articles_min)
+    au_pic = nombre.where(freq.eq(freq.max(axis=1), axis=0)).max(axis=1)
+    garde = (freq.mean(axis=1) >= freq_min) & (au_pic >= articles_min)
     nombre, freq = nombre[garde], freq[garde]
     ecart = freq.std(axis=1, ddof=0)
     score = freq.sub(freq.mean(axis=1), axis=0).div(ecart.where(ecart > 0), axis=0).dropna()
