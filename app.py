@@ -100,6 +100,7 @@ def volume(periode):
 
 RESEAU_PERSONNES = 35  # personnes les plus citées de la période
 RESEAU_LIENS = 75  # nombre maximal de liens affichés
+RESEAU_COMMUNS_MIN = 3  # une paire doit avoir au moins 3 articles en commun pour être reliée
 
 
 def reseau_personnes(periode, pays=None):
@@ -112,11 +113,13 @@ def reseau_personnes(periode, pays=None):
     for personnes in sel['personnes']:
         cooccurrences.update(combinations(sorted(principaux & personnes), 2))
 
-    # Plus petit seuil (au moins 2 articles en commun) qui garde au plus RESEAU_LIENS liens.
-    seuil = next((s for s in range(2, max(cooccurrences.values(), default=1) + 1)
-                  if sum(n >= s for n in cooccurrences.values()) <= RESEAU_LIENS), 1)
+    # Indice de Jaccard : articles qui citent les deux / articles qui citent l'un ou l'autre. Contrairement au simple
+    # nombre d'articles en commun, il ne relie pas tout le monde aux personnes les plus citées.
+    liens = sorted(((n / (citations[a] + citations[b] - n), a, b, n) for (a, b), n in cooccurrences.items()
+                    if n >= RESEAU_COMMUNS_MIN), reverse=True)[:RESEAU_LIENS]
     graphe = nx.Graph()
-    graphe.add_weighted_edges_from((a, b, n) for (a, b), n in cooccurrences.items() if n >= seuil)
+    for jaccard, a, b, n in liens:
+        graphe.add_edge(a, b, weight=jaccard, communs=n)
 
     fig = go.Figure()
     fig.update_layout(height=640, xaxis=dict(visible=False), yaxis=dict(visible=False), hovermode='closest')
@@ -151,7 +154,8 @@ def reseau_personnes(periode, pays=None):
         ajouter_noeuds(fig, graphe, position, citations, citations_max, sorted(autres), 'Autres', theme.AXIS)
 
     masques = len(principaux) - graphe.number_of_nodes()
-    note = f'Liens : au moins {seuil} article{"s" if seuil > 1 else ""} en commun'
+    note = (f'Liens : les {graphe.number_of_edges()} paires les plus associées (indice de Jaccard), '
+            f'au moins {RESEAU_COMMUNS_MIN} articles en commun')
     if masques:
         note += f'. {masques} des {len(principaux)} personnes les plus citées, sans lien à ce seuil, ne sont pas affichées'
     fig.add_annotation(text=note, xref='paper', yref='paper', x=0, y=0, showarrow=False, xanchor='left',
@@ -174,8 +178,9 @@ def ajouter_noeuds(fig, graphe, position, citations, citations_max, noms, nom_gr
     survols = []
     for nom in noms:
         voisins = sorted(graphe[nom].items(), key=lambda v: -v[1]['weight'])[:5]
-        survols.append(f'<b>{nom}</b><br>{nombre(citations[nom])} articles<br><br>Le plus souvent avec :<br>'
-                       + '<br>'.join(f'{v} ({nombre(d["weight"])} articles)' for v, d in voisins))
+        survols.append(f'<b>{nom}</b><br>{nombre(citations[nom])} articles<br><br>Le plus associé à :<br>'
+                       + '<br>'.join(f'{v} ({nombre(d["communs"])} articles en commun, Jaccard {decimal(d["weight"])})'
+                                     for v, d in voisins))
     fig.add_trace(go.Scatter(
         x=[position[n][0] for n in noms], y=[position[n][1] for n in noms], mode='markers+text', name=nom_groupe,
         text=noms, textposition='top center', textfont=dict(size=12, color=theme.INK),
@@ -361,7 +366,6 @@ def part(x):
     return f'{x * 100:.1f}'.replace('.', ',') + ' %'
 
 
-AES = {'MLI', 'BFA', 'NER'}  # Alliance des États du Sahel
 TOUTE_PERIODE = 'periode'
 
 
@@ -374,8 +378,6 @@ def carte_pays(periode, vue):
     effectifs = sel.groupby('mois').size()
     effectifs[TOUTE_PERIODE] = len(sel)
     images = [TOUTE_PERIODE, *sel['mois'].drop_duplicates().sort_values()]
-    contour = dict(color=[theme.INK if c in AES else theme.AXIS for c in codes],
-                   width=[1.6 if c in AES else 0.5 for c in codes])
 
     def trace(m):
         z = parts.loc[m]
@@ -383,7 +385,7 @@ def carte_pays(periode, vue):
         return go.Choropleth(
             # Échelle propre à chaque image : un mois très concentré n'écrase plus les autres.
             locations=codes, z=z.values, locationmode='ISO-3', zmin=0, zmax=max(float(z.max()), 0.01),
-            colorscale=theme.SEQUENTIAL_SIGNAL, marker_line=contour,
+            colorscale=theme.SEQUENTIAL_SIGNAL, marker_line=dict(color=theme.AXIS, width=0.5),
             colorbar=dict(title='Part des articles', tickformat='.0%', thickness=12, len=0.7, outlinewidth=0),
             customdata=[(NAME[c], part(v), nombre(round(v * effectifs[m]))) for c, v in z.items()],
             hovertemplate=f'<b>%{{customdata[0]}}</b><br>%{{customdata[1]}} des articles {quand} '
@@ -403,10 +405,6 @@ def carte_pays(periode, vue):
         fig.update_geos(lonaxis_range=[-180, 180], lataxis_range=[-58, 85], projection_rotation_lon=0)
     fig.update_layout(
         height=580, margin=dict(l=0, r=0, t=8, b=0), dragmode=False, uirevision=vue,
-        annotations=[dict(
-            text='Contour noir : Mali, Burkina Faso et Niger, membres de l\'Alliance des États du Sahel (AES)',
-            xref='paper', yref='paper', x=0, y=1, xanchor='left', yanchor='top', showarrow=False,
-            font=dict(size=12, color=theme.INK_2))],
         updatemenus=[dict(
             type='buttons', direction='left', x=0, y=0, xanchor='left', yanchor='top', pad=dict(t=30, l=4),
             buttons=[
@@ -451,19 +449,29 @@ def mots_emergents(periode):
     borne = min(EMERGENTS_SCORE_MAX, float(z.max()))  # sur n mois, un score ne dépasse pas racine(n - 1)
     teintes = sample_colorscale(theme.DIVERGING_SIGNAL, ((z.clip(-borne, borne) + borne) / (2 * borne)).ravel())
 
-    # Cases arrondies façon calendrier : un rectangle par case, en unités d'axe. Plotly ne connaît pas la taille
-    # en pixels du graphique, on l'estime pour obtenir des écarts et des arrondis d'environ 3 pixels.
+    # Cases arrondies façon calendrier, dessinées en unités d'axe. Plotly ne connaît pas la taille en pixels du
+    # graphique : on l'estime (largeur et hauteur d'une case) pour obtenir de vrais carrés.
+    # Un carré gris de fond par case, et un carré coloré dont l'aire suit la part des articles du mois qui citent le mot.
     largeur, hauteur = 1100 / len(mois), (EMERGENTS_HAUTEUR - 90) / len(mots)
-    gx, gy, rx, ry = 1.5 / largeur, 1.5 / hauteur, 4 / largeur, 4 / hauteur
-    cases = []
-    for k, teinte in enumerate(teintes):
-        i, j = divmod(k, len(mois))
-        x0, x1, y0, y1 = j - 0.5 + gx, j + 0.5 - gx, i - 0.5 + gy, i + 0.5 - gy
-        cases.append(dict(
+    cote_max = min(largeur, hauteur) - 3
+    cotes = cote_max * (freq.to_numpy() / max(float(freq.to_numpy().max()), 1e-9)) ** 0.5
+
+    def case(i, j, cote, teinte):
+        dx, dy = cote / largeur / 2, cote / hauteur / 2
+        ax, ay = 0.22 * dx * 2, 0.22 * dy * 2
+        x0, x1, y0, y1 = j - dx, j + dx, i - dy, i + dy
+        return dict(
             type='path', layer='below', fillcolor=teinte, line_width=0,
-            path=f'M{x0 + rx},{y0} L{x1 - rx},{y0} Q{x1},{y0} {x1},{y0 + ry} L{x1},{y1 - ry} Q{x1},{y1} {x1 - rx},{y1} '
-                 f'L{x0 + rx},{y1} Q{x0},{y1} {x0},{y1 - ry} L{x0},{y0 + ry} Q{x0},{y0} {x0 + rx},{y0} Z',
-        ))
+            path=f'M{x0 + ax},{y0} L{x1 - ax},{y0} Q{x1},{y0} {x1},{y0 + ay} L{x1},{y1 - ay} Q{x1},{y1} {x1 - ax},{y1} '
+                 f'L{x0 + ax},{y1} Q{x0},{y1} {x0},{y1 - ay} L{x0},{y0 + ay} Q{x0},{y0} {x0 + ax},{y0} Z',
+        )
+
+    cases = []
+    for k, (teinte, cote) in enumerate(zip(teintes, cotes.ravel())):
+        i, j = divmod(k, len(mois))
+        cases.append(case(i, j, cote_max, theme.FOND_CASE))
+        if cote > 0:
+            cases.append(case(i, j, max(cote, 4), teinte))
 
     # Heatmap transparente posée sur les cases : elle porte l'infobulle et la légende des couleurs.
     fig.add_trace(go.Heatmap(
@@ -481,7 +489,7 @@ def mots_emergents(periode):
         yaxis=dict(tickmode='array', tickvals=list(range(len(mots))), ticktext=mots, range=[len(mots) - 0.5, -0.5],
                    showgrid=False, showline=False, zeroline=False),
         annotations=[dict(
-            text="Score = écart de la fréquence du mois à la moyenne du mot, en écarts-types. Mots triés par mois de pic.",
+            text="Couleur : score z, écart de la fréquence du mois à la moyenne du mot, en écarts-types. Taille : part des articles du mois qui citent le mot. Mots triés par mois de pic.",
             xref='paper', yref='paper', x=0, y=0, yshift=-6, yanchor='top', showarrow=False,
             font=dict(size=11, color=theme.MUTED))],
     )
@@ -613,14 +621,14 @@ def choisir_periode(valeur):
 @app.callback(Output('indicateurs', 'children'), Input('periode', 'data'))
 def indicateurs(periode):
     sel = filtrer(periode)
-    personnes = Counter(p for s in sel['personnes'] for p in s)
+    personne, n_personne = Counter(p for s in sel['personnes'] for p in s).most_common(1)[0]
     pays, n_pays = Counter(p for s in sel['pays'] for p in s & AFRICA).most_common(1)[0]
     afrique = sel['pays'].map(lambda s: bool(s & AFRICA)).mean()
     mois = sel['mois'].nunique()
     return [
         html.Div(className='panel chiffres', key='-'.join(periode), children=[
             kpi(nombre(len(sel)), 'articles', f'{nombre(round(len(sel) / mois))} par mois en moyenne'),
-            kpi(nombre(len(personnes)), 'personnes citées', f'la plus citée : {personnes.most_common(1)[0][0]}'),
+            kpi(personne, 'personne la plus citée', f'dans {pourcent(n_personne / len(sel))} des articles'),
             kpi(pourcent(afrique), "parlent d'un pays africain", 'au moins un pays africain cité'),
             kpi(NAME[pays], 'pays africain le plus cité', f'dans {pourcent(n_pays / len(sel))} des articles'),
         ]),
