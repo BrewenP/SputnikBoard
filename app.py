@@ -419,19 +419,19 @@ def mots_emergents(periode):
             xref='paper', yref='paper', x=0.5, y=0.5, font=dict(color=theme.MUTED))])
         return fig
 
-    score, freq, nombre = emergence(filtrer(periode), mois, EMERGENTS, EMERGENTS_FREQUENCE_MIN, EMERGENTS_ARTICLES_MIN)
+    score, freq, comptes = emergence(filtrer(periode), mois, EMERGENTS, EMERGENTS_FREQUENCE_MIN, EMERGENTS_ARTICLES_MIN)
     x = [libelle(m) for m in mois]
-    borne = max(3, min(EMERGENTS_SCORE_MAX, float(score.to_numpy().max())))
+    borne = min(EMERGENTS_SCORE_MAX, float(score.to_numpy().max()))  # sur n mois, un score ne dépasse pas racine(n - 1)
     fig.add_trace(go.Heatmap(
         x=x, y=list(score.index), z=score.to_numpy(), zmin=-borne, zmax=borne, zmid=0,
         colorscale=theme.DIVERGING, xgap=1, ygap=1,
         colorbar=dict(title='Score (z)', thickness=12, len=0.7, outlinewidth=0),
-        customdata=[[(libelle(m, LONGS), part(freq.loc[w, m]), nombre.loc[w, m]) for m in mois] for w in score.index],
+        customdata=[[(libelle(m, LONGS), part(freq.loc[w, m]), nombre(comptes.loc[w, m])) for m in mois] for w in score.index],
         hovertemplate='<b>%{y}</b><br>%{customdata[0]}<br>Score : <b>%{z:+.1f}</b><br>'
                       'Fréquence : %{customdata[1]} des articles (%{customdata[2]} articles)<extra></extra>',
     ))
     fig.update_layout(
-        xaxis=dict(type='category', tickmode='array', tickvals=x[::2 if len(x) > 12 else 1], tickangle=0, side='top',
+        xaxis=dict(type='category', tickmode='array', tickvals=x[::3 if len(x) > 12 else 1], tickangle=0, side='top',
                    showline=False),
         yaxis=dict(type='category', autorange='reversed', showgrid=False, showline=False),
         annotations=[dict(
