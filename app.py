@@ -1,3 +1,4 @@
+import math
 from collections import Counter
 
 import pandas as pd
@@ -5,7 +6,7 @@ import plotly.graph_objects as go
 from dash import Dash, Input, Output, ctx, dcc, html
 
 import theme
-from donnees import AFRICA, NAME, articles
+from donnees import AFRICA, COUNTRIES, NAME, articles, proportion, surrepresentation
 from themes import themes
 
 ISSUES = 'https://github.com/BrewenP/SputnikBoard/issues/'
@@ -25,8 +26,8 @@ ONGLETS = {
         ('Réseau des personnes', 'Qui est cité avec qui ?', 6, True),
     ]),
     'themes': ('Thèmes', [
-        ('Carte des articles', 'Quels grands thèmes structurent le corpus ?', 8, True, 'themes-carte'),
-        ('Évolution des thèmes', 'Quelle place prend chaque thème au fil des mois ?', 8, True, 'themes-evolution'),
+        ('Carte des articles', 'Quels grands thèmes structurent le corpus ?', 8, True),
+        ('Évolution des thèmes', 'Quelle place prend chaque thème au fil des mois ?', 8, True),
     ]),
     'france-russie': ('France / Russie', [
         ('Discours comparés', 'Avec quels mots parle-t-on de la France et de la Russie ?', 9, True),
@@ -34,6 +35,7 @@ ONGLETS = {
 }
 
 df = articles('fr')
+macron, poutine = articles('macron'), articles('poutine')
 THEMES = themes('fr')
 df['theme'] = THEMES['theme']
 MOIS = sorted(df['mois'].unique())
@@ -93,16 +95,144 @@ def volume(periode):
     return fig
 
 
-def carte(titre, question, ticket, large, graphe=None):
-    contenu = dcc.Graph(id=graphe, config={'displayModeBar': False}) if graphe else html.Div(
-        className='placeholder', children=[
-            html.Span('Graphique à venir'),
-            html.A(f'Ticket #{ticket}', href=f'{ISSUES}{ticket}', target='_blank'),
-        ])
+# mode -> (libellé du bouton, colonne de `articles`, fréquence cumulée minimale, unité des fréquences)
+MODES = {
+    'mots': ('Mots clés', 'mots', 20, 'occurrences'),
+    'personnes': ('Personnes', 'personnes', 8, 'articles'),
+}
+FRANCE = ('France / Macron', theme.DIVERGING[1])
+RUSSIE = ('Russie / Poutine', theme.DIVERGING[5])
+TOP = 15
+
+
+def decimal(x, signe=False):
+    return f'{x:+.2f}'.replace('.', ',') if signe else f'{x:.2f}'.replace('.', ',')
+
+
+def discours(periode, mode):
+    _, colonne, minimum, unite = MODES[mode]
+    fr, ru = (d[d['mois'].between(*periode)] for d in (macron, poutine))
+    s = surrepresentation(ru, fr, colonne, minimum)  # score > 0 : côté Russie, score < 0 : côté France
+    cotes = {
+        FRANCE: s[s['score'] < 0].tail(TOP).iloc[::-1],
+        RUSSIE: s[s['score'] > 0].head(TOP),
+    }
+    fig = go.Figure()
+    for (nom, couleur), d in cotes.items():
+        fig.add_bar(
+            x=d['score'], y=list(range(len(d))), orientation='h', name=nom, marker_color=couleur,
+            text=d['terme'], textposition='outside', cliponaxis=False,
+            customdata=[(t, decimal(abs(sc)), f'{math.exp(abs(sc)):.1f}'.replace('.', ','), nombre(a), nombre(b))
+                        for t, sc, a, b in zip(d['terme'], d['score'], d['freq_b'], d['freq_a'])],
+            hovertemplate=(
+                '<b>%{customdata[0]}</b><br>'
+                'Score : %{customdata[1]} (cote ×%{customdata[2]} par rapport à l\'autre corpus)<br>'
+                f'{FRANCE[0]} : %{{customdata[3]}} {unite}<br>'
+                f'{RUSSIE[0]} : %{{customdata[4]}} {unite}<extra></extra>'
+            ),
+        )
+    if s.empty:
+        fig.add_annotation(text='Pas assez de données sur cette période', showarrow=False, font=dict(color=theme.MUTED))
+    bord = max(s['score'].abs().max() if not s.empty else 1, 1)
+    graduations = list(range(-math.ceil(bord), math.ceil(bord) + 1))
+    fig.add_vline(x=0, line_color=theme.AXIS)
+    fig.update_layout(
+        barmode='overlay', height=max(TOP, *(len(d) for d in cotes.values())) * 30 + 130,
+        xaxis=dict(
+            range=[-bord * 1.35, bord * 1.35], tickvals=graduations, ticktext=[str(abs(g)) for g in graduations],
+            showgrid=True, title='Score de surreprésentation (logarithme du rapport de cotes)',
+        ),
+        yaxis=dict(autorange='reversed', showticklabels=False, showgrid=False, showline=False),
+    )
+    return fig
+
+
+VUES = {'afrique': 'Afrique', 'monde': 'Monde'}
+
+
+def part(x):
+    return f'{x * 100:.1f}'.replace('.', ',') + ' %'
+
+
+def carte_pays(periode, vue):
+    sel = filtrer(periode)
+    codes = sorted(AFRICA if vue == 'afrique' else COUNTRIES)
+    parts = proportion(sel, 'pays', codes)
+    n_articles = sel.groupby('mois').size()
+    mois = list(parts.index)
+    zmax = max(float(parts.to_numpy().max()), 0.01)  # même échelle pour toutes les images
+
+    def trace(m):
+        z = parts.loc[m]
+        return go.Choropleth(
+            locations=codes, z=z.values, locationmode='ISO-3', zmin=0, zmax=zmax,
+            colorscale=theme.SEQUENTIAL, marker_line_width=0.5, marker_line_color=theme.AXIS,
+            colorbar=dict(title='Part des articles', tickformat='.0%', thickness=12, len=0.7, outlinewidth=0),
+            customdata=[(NAME[c], part(v), nombre(round(v * n_articles[m]))) for c, v in z.items()],
+            hovertemplate='<b>%{customdata[0]}</b><br>%{customdata[1]} des articles du mois '
+                          '(%{customdata[2]} articles)<extra></extra>',
+        )
+
+    cadre = dict(duration=700, redraw=True)
+    fig = go.Figure(
+        data=trace(mois[0]),
+        frames=[go.Frame(data=[trace(m)], name=m) for m in mois],
+    )
+    fig.update_geos(scope='africa' if vue == 'afrique' else 'world', projection_type='natural earth')
+    if vue == 'monde':  # cadrage explicite : sinon la carte garde le décalage de la vue Afrique
+        fig.update_geos(lonaxis_range=[-180, 180], lataxis_range=[-58, 85], projection_rotation_lon=0)
+    fig.update_layout(
+        height=560, margin=dict(l=0, r=0, t=8, b=0), dragmode=False, uirevision=vue,
+        updatemenus=[dict(
+            type='buttons', direction='left', x=0, y=0, xanchor='left', yanchor='top', pad=dict(t=30, l=4),
+            buttons=[
+                dict(label='▶ Lecture', method='animate',
+                     args=[None, dict(frame=cadre, transition=dict(duration=0), fromcurrent=True)]),
+                dict(label='❚❚ Pause', method='animate',
+                     args=[[None], dict(frame=dict(duration=0, redraw=False), mode='immediate',
+                                        transition=dict(duration=0))]),
+            ],
+        )],
+        sliders=[dict(
+            x=0.2, y=0, len=0.8, xanchor='left', yanchor='top', pad=dict(t=30, b=0),
+            currentvalue=dict(prefix='Mois : ', font=dict(size=13, color=theme.INK_2)),
+            font=dict(size=10, color=theme.MUTED),
+            steps=[dict(label=libelle(m), method='animate',
+                        args=[[m], dict(mode='immediate', frame=dict(duration=0, redraw=True),
+                                        transition=dict(duration=0))]) for m in mois],
+        )],
+    )
+    return fig
+
+
+CONTENUS = {
+    5: [
+        dcc.RadioItems(
+            id='carte-vue', value='afrique', inline=True, className='bascule',
+            options=[{'label': nom, 'value': vue} for vue, nom in VUES.items()],
+        ),
+        dcc.Graph(id='carte-graphique', config={'displayModeBar': False}),
+    ],
+    9: [
+        dcc.RadioItems(
+            id='discours-mode', value='mots', inline=True, className='bascule',
+            options=[{'label': libelle_, 'value': mode} for mode, (libelle_, *_) in MODES.items()],
+        ),
+        dcc.Graph(id='discours-graphique', config={'displayModeBar': False}),
+    ],
+    'Carte des articles': [dcc.Graph(id='themes-carte', config={'displayModeBar': False})],
+    'Évolution des thèmes': [dcc.Graph(id='themes-evolution', config={'displayModeBar': False})],
+}
+
+
+def carte(titre, question, ticket, large):
     return html.Div(className='panel wide' if large else 'panel', children=[
         html.H2(titre),
         html.P(question, className='question'),
-        contenu,
+        *CONTENUS.get(titre, CONTENUS.get(ticket, [html.Div(className='placeholder', children=[
+            html.Span('Graphique à venir'),
+            html.A(f'Ticket #{ticket}', href=f'{ISSUES}{ticket}', target='_blank'),
+        ])])),
     ])
 
 
@@ -180,6 +310,16 @@ def indicateurs(periode):
             dcc.Graph(figure=volume(periode), config={'displayModeBar': False}),
         ]),
     ]
+
+
+@app.callback(Output('discours-graphique', 'figure'), Input('periode', 'data'), Input('discours-mode', 'value'))
+def comparer_discours(periode, mode):
+    return discours(periode, mode)
+
+
+@app.callback(Output('carte-graphique', 'figure'), Input('periode', 'data'), Input('carte-vue', 'value'))
+def cartographier(periode, vue):
+    return carte_pays(periode, vue)
 
 
 def nom_theme(t):

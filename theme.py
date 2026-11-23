@@ -35,5 +35,10 @@ pio.templates['sputnikboard'] = go.layout.Template(layout=dict(
     hoverlabel=dict(bgcolor='white', bordercolor=GRID, font=dict(family=FONT, color=INK, size=13)),
     margin=dict(l=8, r=8, t=48, b=8),
     bargap=0.25, barcornerradius=4,
+    geo=dict(
+        bgcolor=SURFACE, showframe=False, showcoastlines=True, coastlinecolor=AXIS, coastlinewidth=0.5,
+        showland=True, landcolor='#f4f4f2', showcountries=True, countrycolor=AXIS, countrywidth=0.5,
+        showocean=False, showlakes=False,
+    ),
 ))
 pio.templates.default = 'sputnikboard'
