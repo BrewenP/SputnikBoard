@@ -9,7 +9,7 @@ import prince
 from dash import Dash, Input, Output, ctx, dcc, html
 
 import theme
-from donnees import AFRICA, COUNTRIES, NAME, articles, proportion, surrepresentation
+from donnees import AFRICA, COUNTRIES, NAME, articles, emergence, proportion, surrepresentation
 from themes import themes
 
 ISSUES = 'https://github.com/BrewenP/SputnikBoard/issues/'
@@ -403,6 +403,45 @@ def carte_pays(periode, vue):
     return fig
 
 
+EMERGENTS = 28  # mots affichés sur la heatmap des mots émergents
+EMERGENTS_FREQUENCE_MIN = 0.005  # un mot doit être dans au moins 0,5 % des articles en moyenne par mois
+EMERGENTS_ARTICLES_MIN = 5  # et dans au moins 5 articles lors de son mois de pic
+EMERGENTS_SCORE_MAX = 5  # au-delà, la couleur ne change plus (sinon un seul pic écrase tout le reste)
+
+
+def mots_emergents(periode):
+    mois = [m for m in MOIS if periode[0] <= m <= periode[1]]
+    fig = go.Figure()
+    fig.update_layout(height=700)
+    if len(mois) < 3:
+        fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), annotations=[dict(
+            text='Choisir au moins 3 mois pour repérer les mots émergents.', showarrow=False,
+            xref='paper', yref='paper', x=0.5, y=0.5, font=dict(color=theme.MUTED))])
+        return fig
+
+    score, freq, nombre = emergence(filtrer(periode), mois, EMERGENTS, EMERGENTS_FREQUENCE_MIN, EMERGENTS_ARTICLES_MIN)
+    x = [libelle(m) for m in mois]
+    borne = max(3, min(EMERGENTS_SCORE_MAX, float(score.to_numpy().max())))
+    fig.add_trace(go.Heatmap(
+        x=x, y=list(score.index), z=score.to_numpy(), zmin=-borne, zmax=borne, zmid=0,
+        colorscale=theme.DIVERGING, xgap=1, ygap=1,
+        colorbar=dict(title='Score (z)', thickness=12, len=0.7, outlinewidth=0),
+        customdata=[[(libelle(m, LONGS), part(freq.loc[w, m]), nombre.loc[w, m]) for m in mois] for w in score.index],
+        hovertemplate='<b>%{y}</b><br>%{customdata[0]}<br>Score : <b>%{z:+.1f}</b><br>'
+                      'Fréquence : %{customdata[1]} des articles (%{customdata[2]} articles)<extra></extra>',
+    ))
+    fig.update_layout(
+        xaxis=dict(type='category', tickmode='array', tickvals=x[::2 if len(x) > 12 else 1], tickangle=0, side='top',
+                   showline=False),
+        yaxis=dict(type='category', autorange='reversed', showgrid=False, showline=False),
+        annotations=[dict(
+            text="Score = écart de la fréquence du mois à la moyenne du mot, en écarts-types. Mots triés par mois de pic.",
+            xref='paper', yref='paper', x=0, y=0, yshift=-6, yanchor='top', showarrow=False,
+            font=dict(size=11, color=theme.MUTED))],
+    )
+    return fig
+
+
 CONTENUS = {
     3: [
         html.Div(className='termes-controles', children=[
@@ -417,6 +456,7 @@ CONTENUS = {
         ]),
         dcc.Graph(id='evolution-graphique', config={'displayModeBar': False}),
     ],
+    4: [dcc.Graph(id='emergents-graphique', config={'displayModeBar': False})],
     5: [
         dcc.RadioItems(
             id='carte-vue', value='afrique', inline=True, className='bascule',
@@ -565,6 +605,11 @@ def sans_chevauchement(points, ecart=(0.08, 0.05)):
         if libre:
             places.append((x, y))
     return visibles
+
+
+@app.callback(Output('emergents-graphique', 'figure'), Input('periode', 'data'))
+def mettre_a_jour_emergents(periode):
+    return mots_emergents(periode)
 
 
 @app.callback(Output('afc-graphique', 'figure'), Input('periode', 'data'))
