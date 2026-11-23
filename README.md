@@ -121,7 +121,7 @@ Les onglets et leurs cartes sont décrits dans le dictionnaire `ONGLETS` de `app
 ### Ajouter un graphique
 
 1. Écrire une fonction qui prend la période et renvoie une figure Plotly, en partant de `filtrer(periode)` qui donne les articles de la période.
-2. Remplacer la carte vide correspondante par un `dcc.Graph` avec un identifiant.
+2. Ajouter dans le dictionnaire `CONTENUS` de `app.py`, sous le numéro du ticket, le contenu de la carte : un `dcc.Graph` avec un identifiant, précédé si besoin de contrôles (boutons, liste déroulante). La carte vide est alors remplacée automatiquement. Si un ticket a plusieurs cartes, utiliser le titre de la carte comme clé. Ne pas modifier `carte()` au cas par cas.
 3. Relier les deux par un callback qui écoute la période :
 
 ```python
@@ -132,6 +132,8 @@ def evolution(periode):
 ```
 
 `periode` vaut par exemple `['2025-04', '2025-10']` (premier et dernier mois inclus).
+
+Avant d'ouvrir une pull request, fusionner `main` dans sa branche et vérifier que tous les onglets fonctionnent encore : `app.py` est partagé par tous les tickets, et le remplacer par une version ancienne efface le travail des autres.
 
 ### Règles de style
 
