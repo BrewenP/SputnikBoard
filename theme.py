@@ -11,6 +11,7 @@ MUTED = '#6f7178'
 GRID = '#e3e3e0'
 AXIS = '#c4c4c0'
 ACCENT = '#ff6a13'
+ORANGE_TEXTE = '#c24c06'  # orange plus sombre, lisible en texte sur fond blanc
 
 SERIES = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948']
 SEQUENTIAL = ['#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5', '#256abf', '#184f95', '#0d366b']

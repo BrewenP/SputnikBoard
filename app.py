@@ -709,6 +709,7 @@ def changer_onglet(*_):
 
 AFC_FREQUENTS = 200  # mots clés les plus fréquents de la période, gardés pour le tableau de contingence
 AFC_AFFICHES = 30  # mots qui contribuent le plus aux deux axes, affichés sur le graphique
+AFC_MIN_ARTICLES = 300  # en dessous, un mois est projeté en élément supplémentaire
 
 
 def sans_chevauchement(points, ecart=(0.08, 0.05)):
@@ -728,11 +729,16 @@ def mettre_a_jour_emergents(periode):
     return mots_emergents(periode)
 
 
+def pole(contributions, coordonnees, signe, n=3):
+    """Mots qui tirent le plus l'axe d'un côté (signe -1 ou 1) : plus fortes contributions de ce côté."""
+    return ', '.join(contributions[coordonnees * signe > 0].nlargest(n).index)
+
+
 @app.callback(Output('afc-graphique', 'figure'), Input('periode', 'data'))
 def afc(periode):
     sel = filtrer(periode)
     fig = go.Figure()
-    fig.update_layout(height=600)
+    fig.update_layout(height=680)
     if sel['mois'].nunique() < 3:
         fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), annotations=[dict(
             text="Choisir au moins 3 mois pour l'analyse des correspondances.", showarrow=False,
@@ -745,41 +751,59 @@ def afc(periode):
     paires = paires[paires['mot'].isin(frequents)]
     tableau = pd.crosstab(paires['mot'], paires['mois'])
 
-    ca = prince.CA(n_components=2, random_state=0).fit(tableau)
-    mots, mois = ca.row_coordinates(tableau), ca.column_coordinates(tableau)
-    # Carte asymétrique : les mois en coordonnées standard (divisées par la racine de la valeur propre)
-    # s'écartent du centre, et chaque mot se place au barycentre des mois où il apparaît le plus.
-    mois = mois / ca.eigenvalues_ ** 0.5
+    # Les mois peu fournis (avant la rupture de collecte) ont des profils instables : ils sont projetés sur la carte
+    # en éléments supplémentaires, sans participer au calcul des axes.
+    effectifs = sel['mois'].value_counts()
+    actifs = [m for m in tableau.columns if effectifs[m] >= AFC_MIN_ARTICLES]
+    if len(actifs) < 3:
+        actifs = list(tableau.columns)
+    ca = prince.CA(n_components=2, random_state=0).fit(tableau[actifs])
     inertie = ca.percentage_of_variance_
+    # Carte asymétrique : les mois en coordonnées standard (divisées par la racine de la valeur propre) forment le
+    # cadre, et chaque mot se place au barycentre des mois où il apparaît : un mot proche d'un mois y est surreprésenté.
+    mots, mois = ca.row_coordinates(tableau[actifs]), ca.column_coordinates(tableau) / ca.eigenvalues_ ** 0.5
+    contributions = ca.row_contributions_
+    mots_tous = mots
     # Mots les plus variables dans le temps : ceux qui contribuent le plus à la construction des deux axes.
-    contribution = ca.row_contributions_[0] * inertie[0] + ca.row_contributions_[1] * inertie[1]
-    mots = mots.loc[contribution.nlargest(AFC_AFFICHES).index]
+    mots = mots.loc[(contributions[0] * inertie[0] + contributions[1] * inertie[1]).nlargest(AFC_AFFICHES).index]
 
-    extremes = [mois.index[0], mois.index[-1]]
-    ordre_mois = extremes + list((mois[0] ** 2 + mois[1] ** 2).drop(extremes).sort_values(ascending=False).index)
+    ordre_mois = list((mois[0] ** 2 + mois[1] ** 2).sort_values(ascending=False).index)
     points = [(mois.loc[m, 0], mois.loc[m, 1]) for m in ordre_mois] + list(zip(mots[0], mots[1]))
-    visibles = sans_chevauchement(points)
+    visibles = sans_chevauchement(points, ecart=(0.06, 0.035))
     mois_visibles = {m for m, v in zip(ordre_mois, visibles) if v}
     etiquettes = [m if v else '' for m, v in zip(mots.index, visibles[len(ordre_mois):])]
 
     fig.add_trace(go.Scatter(
         x=mots[0], y=mots[1], mode='markers+text', name='Mots clés', text=etiquettes, textposition='top center',
-        marker=dict(color=theme.SERIES[1], size=6), textfont=dict(color=theme.SERIES[1], size=12),
+        marker=dict(color=theme.ACCENT, size=6, opacity=0.8), textfont=dict(color=theme.ORANGE_TEXTE, size=12),
         customdata=list(zip(mots.index, tableau.loc[mots.index].sum(axis=1))),
         hovertemplate='<b>%{customdata[0]}</b><br>dans %{customdata[1]} articles<extra></extra>',
     ))
-    fig.add_trace(go.Scatter(
-        x=mois[0], y=mois[1], mode='lines+markers+text', name='Mois (du plus clair au plus foncé)',
-        text=[libelle(m) if m in mois_visibles else '' for m in mois.index], textposition='top center',
-        line=dict(color=theme.AXIS, width=1),
-        marker=dict(color=list(range(len(mois))), colorscale=theme.SEQUENTIAL[1:], size=10,
-                    line=dict(color=theme.SURFACE, width=1.5)),
-        textfont=dict(color=theme.SEQUENTIAL[-2], size=11), customdata=[libelle(m, LONGS) for m in mois.index],
-        hovertemplate='<b>%{customdata}</b><extra></extra>',
-    ))
+    for nom, liste, plein in (('Mois', actifs, True), ('Mois peu fournis, projetés sans peser sur les axes',
+                                                    [m for m in mois.index if m not in actifs], False)):
+        if not liste:
+            continue
+        rang = [list(mois.index).index(m) for m in liste]
+        fig.add_trace(go.Scatter(
+            x=mois.loc[liste, 0], y=mois.loc[liste, 1], mode='markers+text', name=nom,
+            text=[libelle(m) if m in mois_visibles else '' for m in liste], textposition='bottom center',
+            marker=dict(size=13, symbol='circle' if plein else 'circle-open', line=dict(width=1.5 if plein else 2),
+                        color=[theme.SEQUENTIAL[1 + round(r * (len(theme.SEQUENTIAL) - 2) / max(len(mois) - 1, 1))]
+                               for r in rang]),
+            textfont=dict(color=theme.SEQUENTIAL[-2], size=12),
+            customdata=[(libelle(m, LONGS), nombre(effectifs[m])) for m in liste],
+            hovertemplate='<b>%{customdata[0]}</b><br>%{customdata[1]} articles<extra></extra>',
+        ))
+
+    def titre(axe):
+        return (f'◀ {pole(contributions[axe], mots_tous[axe], -1)}'
+                f'      Axe {axe + 1} · {pourcent(inertie[axe] / 100)} de l’inertie      '
+                f'{pole(contributions[axe], mots_tous[axe], 1)} ▶')
+
     fig.update_layout(
-        xaxis=dict(title=f'Axe 1 ({pourcent(inertie[0] / 100)} de l’inertie)', zeroline=True, zerolinecolor=theme.AXIS),
-        yaxis=dict(title=f'Axe 2 ({pourcent(inertie[1] / 100)} de l’inertie)', zeroline=True, zerolinecolor=theme.AXIS),
+        legend=dict(itemsizing='constant'),
+        xaxis=dict(title=titre(0), zeroline=True, zerolinecolor=theme.AXIS, showgrid=False, showticklabels=False),
+        yaxis=dict(title=titre(1), zeroline=True, zerolinecolor=theme.AXIS, showgrid=False, showticklabels=False),
     )
     return fig
 
