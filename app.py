@@ -535,7 +535,10 @@ CONTENUS = {
         ),
         dcc.Graph(id='discours-graphique', config={'displayModeBar': False}),
     ],
-    'Carte des articles': [dcc.Graph(id='themes-carte', config={'displayModeBar': False})],
+    'Carte des articles': [
+        html.P('Faire glisser pour zoomer sur une zone, double-cliquer pour revenir à la vue complète.', className='astuce'),
+        dcc.Graph(id='themes-carte', config={'displayModeBar': False, 'doubleClick': 'reset'}),
+    ],
     'Évolution des thèmes': [dcc.Graph(id='themes-evolution', config={'displayModeBar': False})],
 }
 
@@ -823,12 +826,8 @@ def nom_theme(t):
 
 
 def note_themes():
-    s, k = THEMES['silhouettes'], THEMES['k']
-    if k == max(s):
-        raison = f'la silhouette croît avec le nombre de thèmes, plafonné à {k} pour garder des couleurs distinctes'
-    else:
-        raison = f'meilleure silhouette entre {min(s)} et {max(s)} thèmes'
-    return f"{k} thèmes : {raison} (silhouette {s[k]:.2f})".replace('.', ',')
+    return (f"{THEMES['k']} thèmes extraits par factorisation en matrices non négatives (NMF). "
+            "Aire d'un îlot proportionnelle à son nombre d'articles ; la position des îlots entre eux n'a pas de sens.")
 
 
 @app.callback(Output('themes-carte', 'figure'), Input('periode', 'data'))
@@ -838,20 +837,31 @@ def carte_themes(periode):
         x=THEMES['x'][~dans], y=THEMES['y'][~dans], mode='markers', name='Hors période',
         marker=dict(color=theme.GRID, size=4), hoverinfo='skip', showlegend=False,
     ))
+    etiquettes = []
     for t in range(THEMES['k']):
-        choix = dans & (df['theme'] == t).to_numpy()
+        du_theme = (df['theme'] == t).to_numpy()
+        choix = dans & du_theme
         sel = df[choix]
         fig.add_trace(go.Scattergl(
-            x=THEMES['x'][choix], y=THEMES['y'][choix], mode='markers', name=nom_theme(t),
-            marker=dict(color=theme.SERIES[t], size=4, opacity=0.7),
-            customdata=list(zip(sel['titre'], sel['date'].dt.strftime('%d/%m/%Y'))),
-            hovertemplate=f'<b>%{{customdata[0]}}</b><br>%{{customdata[1]}}<br>Thème : {nom_theme(t)}<extra></extra>',
+            x=THEMES['x'][choix], y=THEMES['y'][choix], mode='markers', name=nom_theme(t), showlegend=False,
+            marker=dict(color=theme.SERIES[t], size=5, opacity=0.75),
+            customdata=list(zip(sel['titre'], sel['date'].dt.strftime('%d/%m/%Y'), [pourcent(p) for p in THEMES['part'][choix]])),
+            hovertemplate=f'<b>%{{customdata[0]}}</b><br>%{{customdata[1]}}<br>Thème : {nom_theme(t)} '
+                          '(%{customdata[2]} de l\'article)<extra></extra>',
+        ))
+        (cx, cy), r = THEMES['centres'][t], THEMES['rayons'][t]
+        haut = cy >= 0
+        etiquettes.append(dict(
+            x=cx, y=cy + r if haut else cy - r, yanchor='bottom' if haut else 'top', showarrow=False,
+            text=f"<b>{'<br>'.join(nom_theme(t).rsplit(', ', 1))}</b><br>{nombre(int(choix.sum()))} articles",
+            font=dict(size=12, color=theme.SERIES[t]), bgcolor='rgba(255,255,255,0.85)',
         ))
     fig.update_layout(
-        height=560, legend=dict(orientation='v', x=1.02, y=1, yanchor='top', traceorder='normal', itemsizing='constant'),
+        height=560, dragmode='zoom', margin=dict(t=20, b=36),
         xaxis=dict(visible=False), yaxis=dict(visible=False, scaleanchor='x'),
-        annotations=[dict(text=note_themes(), xref='paper', yref='paper', x=0, y=0, showarrow=False,
-                          xanchor='left', yanchor='bottom', font=dict(size=11, color=theme.MUTED))],
+        annotations=etiquettes + [dict(text=note_themes(), xref='paper', yref='paper', x=0, y=0, yshift=-30,
+                                       showarrow=False, xanchor='left', yanchor='bottom',
+                                       font=dict(size=11, color=theme.MUTED))],
     )
     return fig
 
