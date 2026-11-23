@@ -123,7 +123,35 @@ def evolution_termes(periode, selection):
     mois_selectionnes = [m for m in MOIS if periode[0] <= m <= periode[1]]
     fig = go.Figure()
 
-    for valeur in selection or EVOLUTION_TERME_DEFAUT:
+    if not selection:
+        fig.update_layout(
+            height=440,
+            margin=dict(l=8, r=8, t=62, b=8),
+            xaxis=dict(
+                tickmode='array',
+                tickvals=[libelle(m) for m in mois_selectionnes[::3]],
+                title=None,
+            ),
+            yaxis=dict(
+                tickformat='.0%',
+                range=[0, 1],
+                dtick=0.05,
+                title='Part des articles',
+            ),
+            annotations=[dict(
+                text='Sélectionnez au moins un terme',
+                xref='paper',
+                yref='paper',
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(size=14, color=theme.MUTED),
+                bgcolor='rgba(255,255,255,0.92)',
+            )],
+        )
+        return fig
+
+    for valeur in selection or []:
         colonne, terme = valeur.split('|', 1)
         serie = proportion(sel, colonne, [terme], par='mois').reindex(mois_selectionnes)
         label = next(
@@ -180,14 +208,17 @@ def carte(titre, question, ticket, large):
             html.P(question, className='question'),
             html.Div(className='termes-controles', children=[
                 html.Div('Termes affichés', className='label'),
-                dcc.Dropdown(
-                    id='termes-evolution',
-                    options=EVOLUTION_TERME_OPTIONS,
-                    value=EVOLUTION_TERME_DEFAUT,
-                    multi=True,
-                    clearable=False,
-                    placeholder='Sélectionner des termes',
-                ),
+                html.Div(className='termes-selection', children=[
+                    dcc.Dropdown(
+                        id='termes-evolution',
+                        options=EVOLUTION_TERME_OPTIONS,
+                        value=EVOLUTION_TERME_DEFAUT,
+                        multi=True,
+                        clearable=False,
+                        placeholder='Sélectionner des termes',
+                    ),
+                    html.Button('Tout désélectionner', id='tout-deselectionner', className='termes-clear', n_clicks=0),
+                ]),
             ]),
             dcc.Graph(id='evolution-graphique', config={'displayModeBar': False}),
         ])
@@ -284,6 +315,15 @@ def indicateurs(periode):
 )
 def mettre_a_jour_evolution(periode, selection):
     return evolution_termes(periode, selection)
+
+
+@app.callback(
+    Output('termes-evolution', 'value'),
+    Input('tout-deselectionner', 'n_clicks'),
+    prevent_initial_call=True,
+)
+def deselectionner_tous_les_termes(_):
+    return []
 
 
 if __name__ == '__main__':
