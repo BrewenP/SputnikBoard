@@ -585,3 +585,81 @@ body {
         justify-self: start;
     }
 }
+
+.astuce {
+    margin: -10px 0 12px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.filtre {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    width: fit-content;
+    margin: 0 0 10px;
+    padding: 5px 5px 5px 14px;
+    border: 1px solid rgba(255, 106, 19, 0.35);
+    border-radius: 999px;
+    background: #fff4ec;
+    font-size: 13px;
+    animation: monte 0.25s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.filtre[hidden] {
+    display: none;
+}
+
+.filtre > span::before {
+    content: "";
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 8px;
+    border-radius: 50%;
+    background: var(--signal);
+    vertical-align: 1px;
+}
+
+.filtre-bouton {
+    border: none;
+    border-radius: 999px;
+    padding: 5px 12px;
+    background: var(--nuit);
+    color: var(--clair);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s, transform 0.1s;
+}
+
+.filtre-bouton:hover {
+    background: var(--nuit-2);
+}
+
+.filtre-bouton:active {
+    transform: scale(0.97);
+}
+
+.filtre-bouton:focus-visible {
+    outline: 2px solid var(--signal);
+    outline-offset: 2px;
+}
+
+.filtre-bouton + .filtre-bouton {
+    margin-left: -8px;
+    background: transparent;
+    color: var(--ink-2);
+}
+
+.filtre-bouton + .filtre-bouton:hover {
+    background: rgba(29, 30, 33, 0.06);
+    color: var(--ink);
+}
+
+.js-plotly-plot .choroplethlayer path,
+#reseau-personnes .scatterlayer .trace:last-child .point {
+    cursor: pointer;
+}
