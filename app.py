@@ -14,7 +14,7 @@ ISSUES = 'https://github.com/BrewenP/SputnikBoard/issues/'
 
 ONGLETS = {
     'evolution': ('Évolution', [
-        ('Évolution de termes dans le temps', "Quels sujets et quels acteurs dominent l'actualité, semaine après semaine ?", 3, True),
+        ('Évolution de termes dans le temps', "Quels sujets et quels acteurs dominent l'actualité, mois après mois ?", 3, True),
     ]),
     'vocabulaire': ('Vocabulaire', [
         ('Mots émergents', 'Quels mots surgissent puis disparaissent ?', 4, True),
@@ -91,6 +91,118 @@ def volume(periode):
         height=196, margin=dict(l=0, r=0, t=8, b=0),
         xaxis=dict(tickmode='array', tickvals=x[::3], showline=False),
         yaxis=dict(nticks=3, showline=False),
+    )
+    return fig
+
+
+EVOLUTION_TERME_OPTIONS = [
+    {'label': 'Poutine (personne)', 'value': 'personnes|Poutine'},
+    {'label': 'Trump (personne)', 'value': 'personnes|Trump'},
+    {'label': 'Zelensky (personne)', 'value': 'personnes|Zelensky'},
+    {'label': 'Macron (personne)', 'value': 'personnes|Macron'},
+    {'label': 'Lavrov (personne)', 'value': 'personnes|Lavrov'},
+    {'label': 'Russie (mot-clé)', 'value': 'mots|russie'},
+    {'label': 'Ukraine (mot-clé)', 'value': 'mots|ukraine'},
+    {'label': 'Afrique (mot-clé)', 'value': 'mots|afrique'},
+    {'label': 'Trump (mot-clé)', 'value': 'mots|trump'},
+    {'label': 'Poutine (mot-clé)', 'value': 'mots|poutine'},
+    {'label': 'militaire (mot-clé)', 'value': 'mots|militaire'},
+    {'label': 'gaza (mot-clé)', 'value': 'mots|gaza'},
+]
+
+EVOLUTION_TERME_DEFAUT = [
+    'personnes|Poutine',
+    'personnes|Trump',
+    'mots|russie',
+    'mots|ukraine',
+]
+
+EVENEMENTS = [
+    ('2025-02', 'Début des pourparlers Russie-États-Unis à Riyad'),
+    ('2025-06', 'Guerre Israël-Iran'),
+    ('2025-08', 'Sommet Trump-Poutine en Alaska'),
+]
+
+
+def evolution_termes(periode, selection):
+    sel = filtrer(periode)
+    mois_selectionnes = [m for m in MOIS if periode[0] <= m <= periode[1]]
+    fig = go.Figure()
+
+    if not selection:
+        fig.update_layout(
+            height=440,
+            margin=dict(l=8, r=8, t=62, b=8),
+            xaxis=dict(
+                tickmode='array',
+                tickvals=[libelle(m) for m in mois_selectionnes[::3]],
+                title=None,
+            ),
+            yaxis=dict(
+                tickformat='.0%',
+                range=[0, 1],
+                dtick=0.05,
+                title='Part des articles',
+            ),
+            annotations=[dict(
+                text='Sélectionnez au moins un terme',
+                xref='paper',
+                yref='paper',
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(size=14, color=theme.MUTED),
+                bgcolor='rgba(255,255,255,0.92)',
+            )],
+        )
+        return fig
+
+    for valeur in selection or []:
+        colonne, terme = valeur.split('|', 1)
+        serie = proportion(sel, colonne, [terme], par='mois').reindex(mois_selectionnes)
+        label = next(
+            (o['label'].replace(' (personne)', '').replace(' (mot-clé)', '')
+             for o in EVOLUTION_TERME_OPTIONS if o['value'] == valeur),
+            terme,
+        )
+        y = serie[terme].fillna(0).values
+        fig.add_trace(go.Scatter(
+            x=[libelle(m) for m in mois_selectionnes],
+            y=y,
+            mode='lines+markers',
+            name=label,
+            customdata=[libelle(m, LONGS) for m in mois_selectionnes],
+            text=[label] * len(mois_selectionnes),
+            hovertemplate='<b>%{customdata}</b><br>Terme : %{text}<br>Part : %{y:.1%}<extra></extra>',
+        ))
+
+    for mois, texte in EVENEMENTS:
+        if periode[0] <= mois <= periode[1]:
+            fig.add_vline(
+                x=libelle(mois),
+                line_width=1,
+                line_dash='dot',
+                line_color=theme.AXIS,
+            )
+            fig.add_annotation(
+                x=libelle(mois),
+                y=1.04,
+                yref='paper',
+                text=texte,
+                showarrow=False,
+                yanchor='bottom',
+                bgcolor='rgba(255,255,255,0.92)',
+                bordercolor=theme.GRID,
+                font=dict(size=11, color=theme.INK_2),
+            )
+
+    fig.update_layout(
+        height=440,
+        margin=dict(l=8, r=8, t=62, b=8),
+        hovermode='x unified',
+        yaxis=dict(tickformat='.0%', rangemode='tozero', title='Part des articles'),
+        xaxis=dict(tickmode='array', tickvals=[libelle(m) for m in mois_selectionnes[::3]], title=None),
+        legend=dict(orientation='h', y=1.12, yanchor='bottom', x=0),
     )
     return fig
 
@@ -206,6 +318,19 @@ def carte_pays(periode, vue):
 
 
 CONTENUS = {
+    3: [
+        html.Div(className='termes-controles', children=[
+            html.Div('Termes affichés', className='label'),
+            html.Div(className='termes-selection', children=[
+                dcc.Dropdown(
+                    id='termes-evolution', options=EVOLUTION_TERME_OPTIONS, value=EVOLUTION_TERME_DEFAUT,
+                    multi=True, clearable=False, placeholder='Sélectionner des termes',
+                ),
+                html.Button('Tout désélectionner', id='tout-deselectionner', className='termes-clear', n_clicks=0),
+            ]),
+        ]),
+        dcc.Graph(id='evolution-graphique', config={'displayModeBar': False}),
+    ],
     5: [
         dcc.RadioItems(
             id='carte-vue', value='afrique', inline=True, className='bascule',
@@ -311,6 +436,24 @@ def indicateurs(periode):
             dcc.Graph(figure=volume(periode), config={'displayModeBar': False}),
         ]),
     ]
+
+
+@app.callback(
+    Output('evolution-graphique', 'figure'),
+    Input('periode', 'data'),
+    Input('termes-evolution', 'value'),
+)
+def mettre_a_jour_evolution(periode, selection):
+    return evolution_termes(periode, selection)
+
+
+@app.callback(
+    Output('termes-evolution', 'value'),
+    Input('tout-deselectionner', 'n_clicks'),
+    prevent_initial_call=True,
+)
+def deselectionner_tous_les_termes(_):
+    return []
 
 
 AFC_FREQUENTS = 200  # mots clés les plus fréquents de la période, gardés pour le tableau de contingence
