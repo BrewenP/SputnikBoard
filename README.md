@@ -29,13 +29,11 @@ Vous donc êtes censé avoir 4 dossiers :
 - `fr.sputniknews.africa--20220630--20230630`
 - `fr.sputniknews.africa--20221101--20221231`
 
-Ensuite tout simplement :
+Ensuite
 
 ```
 uv sync
 ```
-
-Et le projet est lancé
 
 ## Lancement
 
